@@ -23,6 +23,8 @@ PyMontrol is a library to control data flow using python and MongoDB
 Design phylosophy:
 Quick and clean way to achieve data flow that can sustain small to medium scale service deployment.
 Large scale will be supported by hosting the worker and controller on to cloud functions
+each worker work with 1 python interpreter
+
 
 
 To use:
