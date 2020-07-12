@@ -23,14 +23,10 @@ class controller:
     def __init__(self):
         try:
             resume_token = connections.client['eventTrigger']['resume_token'].find_one()['value']
-        
             self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch(resume_after=resume_token)
         except:
             self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch()
         pass
-    
-    
-    
     
     def kill_worker(self,worker_name):
         if not worker_name.startswith('test_worker') and not worker_name.startswith('worker'):
@@ -50,7 +46,7 @@ class controller:
         # kill or wake up sleeping worker
         c = mongoClient['worker']['availableWorker'].find()
         for worker in c:
-            if int(time.time()) - worker['free-since'] > worker_time_out:
+            if int(time.time()) - worker['free-since'] > control_config['worker_time_out']:
                 kill_worker(worker['_id'])
                 pass
             pass
