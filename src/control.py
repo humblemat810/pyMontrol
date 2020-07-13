@@ -23,7 +23,8 @@ class controller:
     def __init__(self):
         try:
             resume_token = connections.client['eventTrigger']['resume_token'].find_one()['value']
-            self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch(resume_after=resume_token)
+            # resume_token = bytes(resume_token, 'utf-8')
+            self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch(resume_after = resume_token)
         except:
             self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch()
         pass
@@ -47,12 +48,12 @@ class controller:
         c = mongoClient['worker']['availableWorker'].find()
         for worker in c:
             if int(time.time()) - worker['free-since'] > control_config['worker_time_out']:
-                kill_worker(worker['_id'])
+                self.kill_worker(worker['_id'])
                 pass
             pass
         pass    
         
-    def manage_new_data_for_execution(self,):
+    def manage_new_data_for_execution(self):
         for i in self.eventStream:
             # print(i)
             if 'command' in i:
@@ -69,10 +70,11 @@ class controller:
             
             resume_token = i['_id']
             connections.client['eventTrigger']['resume_token'].replace_one({'_id': 'resume_token'}, 
-                                                                           {'_id': 'resume_token', 'value': resume_token['_data']},
+                                                                           {'_id': 'resume_token', 'value': resume_token},
                                                                            upsert = True
                                                                            )
 if __name__ == '__main__':
     my_controller = controller()
+    
     my_controller.manage_new_data_for_execution()
     pass
