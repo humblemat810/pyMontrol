@@ -8,11 +8,14 @@ Created on Sat Jul 11 07:56:38 2020
 def debug_decorater( to_decorate):
     def func_to_decorate(*arg, **kwarg):
         try:
-            to_decorate(*arg, **kwarg)
+            return(to_decorate(*arg, **kwarg))
         except:
             # TO_DO: write your own debug code
             print('error')
-        
+            import traceback
+            for line in traceback.format_stack():
+                print(line.strip())
+            print('-------------')
         pass
     return func_to_decorate
 
