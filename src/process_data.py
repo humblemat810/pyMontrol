@@ -7,6 +7,6 @@ Created on Sat Jul 11 00:41:21 2020
 
 def process_data(data):
     # TO_DO: rewrite this class for custom local control
-    from dag_data_process import process_to_local_control
-    process_to_local_control(data)
+    from local_data_controller import local_control_init
+    local_control_init(data)
     pass
