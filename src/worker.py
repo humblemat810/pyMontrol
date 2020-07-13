@@ -17,7 +17,7 @@ class worker:
                                                              'free-since' : int(time.time()),
                                                              'alive' : True
                                                              })
-        self.eventStream = self.client['worker'][_id].watch()
+        self.eventStream = self.client['worker'][worker_collection_name].watch()
         pass
     def worker_instance_report_alive(self):
         self.client['worker']['availableWorker'].update_one(
