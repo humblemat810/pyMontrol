@@ -48,23 +48,28 @@ def to_control(data):
     #alias
     return to_global_control(data)
 def local_control_init(data):
-    from local_data_controller_helper import load_data
+    # to_do: generate packet ID if not exist in data
+    from local_data_controller_helper import load_data, store_dag
+    store_dag(data['dag'])
+    
     load_data(data)
     from queue import Queue
     data['passed_local_controller'] = True
     from local_data_controller_helper import (spawn_child, process, 
                                               collect_parent_data, store_data_to_map)
-    
     q = Queue()
-    store_data_to_map(data)
-    process(data)
-    spawn_child(data,q)
+    from copy import deepcopy
+    init_data = deepcopy(data)
+    init_data['current_node_name'] = 'init'
+    store_data_to_map(init_data)
+    
+    q.put(data['current_node_name'])
     while not q.empty():
         current_node_name = q.get()
         data = collect_parent_data(current_node_name)
-        data['passed_local_controller'] = True
+        
         process(data)
-        data.pop('passed_local_controller')
+        store_data_to_map(data)
         spawn_child(data,q)
         pass
     
@@ -72,7 +77,7 @@ def local_control_init(data):
 def local_control(data):
     ''' process that manage data flow locally'''
     # this route data from mongo to local process or from local process to next local process
-
+    assert 'passed_local_controller' not in data
     data['passed_local_controller'] = True
     return data
     

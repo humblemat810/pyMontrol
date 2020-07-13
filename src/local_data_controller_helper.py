@@ -13,6 +13,25 @@ def load_data(data):
     current_node_name = data['current_node_name']
     if current_node_name in local_control_data.map_of_data:
         local_control_data.map_of_data[current_node_name] = data
+def store_dag(dag):
+    import local_control_data
+    local_control_data.dag = dag
+    local_control_data.reverse_dag = dag.reverse()
+    pass
+
+def collect_parent_data(current_node_name):
+    import local_control_data
+    rdag = local_control_data.reverse_dag
+    data_out = {'data' : {}, dag : local_control_data.dag, current_node_name : current_node_name }
+    passed_local_controller = [('passed_local_controller' in i) for i in rdag[current_node_name]]
+    assert passed_local_controller[1:] == passed_local_controller[:-1]
+        
+    for i in rdag[current_node_name]:
+        data_out['data'][i] = local_control_data.map_of_data[i]
+        if passed_local_controller[0]:
+            data_out['passed_local_controller'] = True
+    return data_out
+    
 
 def all_parent_data_obtained2(next_node_name):
     
@@ -40,7 +59,6 @@ def spawn_child(data, q):
     import local_control_data
     current_node_name = data['current_node_name']
     dag = data['dag']
-    store_data_to_map(data)
     for next_node_name in dag[current_node_name]:  
         # syntax to iterate neighbour
         local_control_data.children_counter[current_node_name] += 1
