@@ -22,7 +22,7 @@ def store_dag(dag):
 def collect_parent_data(current_node_name):
     import local_control_data
     rdag = local_control_data.reverse_dag
-    data_out = {'data' : {}, dag : local_control_data.dag, current_node_name : current_node_name }
+    data_out = {'data' : {}, 'dag' : local_control_data.dag, 'current_node_name' : current_node_name }
     passed_local_controller = [('passed_local_controller' in i) for i in rdag[current_node_name]]
     assert passed_local_controller[1:] == passed_local_controller[:-1]
         
