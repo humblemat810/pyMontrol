@@ -70,11 +70,12 @@ def spawn_child(data, q):
 def process(data):
     dag = data['dag']
     current_node_name = data['current_node_name']
-    current_process_name = dag.nodes[current_node_name] ['process_name'] 
+    current_process_name = dag.nodes[current_node_name] ['current_node_name'] 
     import local_data_controller
     next_func_call = getattr(local_data_controller, current_process_name)
     if all_parent_data_obtained2(current_node_name):
         next_func_call(data)
+        store_data_to_map(data)
     remove_parent_data2(current_node_name)
     
     # spawn children
