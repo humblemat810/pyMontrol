@@ -21,9 +21,10 @@ class process_dag(DiGraph):
         # if len(arg) > 0:
         #     node_for_adding = arg[0]
         if len(arg) > 1:
-            kwarg['current_node_name'] = arg[1]
-
-        current_node_name = kwarg['current_node_name']
+            kwarg['process_name'] = arg[1]
+        
+        current_node_name = kwarg['process_name']
+        
         import pathlib, sys, os
         sys.path.append(str(pathlib.Path('../')))
         import local_data_controller

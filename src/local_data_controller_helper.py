@@ -4,19 +4,21 @@ Created on Sun Jul 12 13:20:41 2020
 @author: Pchan
 """
 def load_data(data):
-    import local_control_data
-    from collections import Counter
-    local_control_data.children_counter = Counter()
-    dag = data['dag']
-    local_control_data.num_of_children = dag.count_neighbour()
-    local_control_data.num_of_parent = dag.reverse().count_neighbour()
-    current_node_name = data['current_node_name']
-    if current_node_name in local_control_data.map_of_data:
-        local_control_data.map_of_data[current_node_name] = data
+    # import local_control_data
+
+    # current_node_name = data['current_node_name']
+    # if current_node_name in local_control_data.map_of_data:
+    #     local_control_data.map_of_data[current_node_name] = data
+    pass
 def store_dag(dag):
     import local_control_data
     local_control_data.dag = dag
     local_control_data.reverse_dag = dag.reverse()
+    from collections import Counter
+    local_control_data.children_counter = Counter()
+    # dag = data['dag']
+    local_control_data.num_of_children = dag.count_neighbour()
+    local_control_data.num_of_parent = dag.reverse().count_neighbour()
     pass
 
 def collect_parent_data(current_node_name):
@@ -70,7 +72,7 @@ def spawn_child(data, q):
 def process(data):
     dag = data['dag']
     current_node_name = data['current_node_name']
-    current_process_name = dag.nodes[current_node_name] ['current_node_name'] 
+    current_process_name = dag.nodes[current_node_name] ['process_name'] 
     import local_data_controller
     next_func_call = getattr(local_data_controller, current_process_name)
     if all_parent_data_obtained2(current_node_name):

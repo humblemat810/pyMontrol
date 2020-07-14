@@ -12,6 +12,8 @@ def debug_decorater( to_decorate):
         except:
             # TO_DO: write your own debug code
             print('error')
+            import sys
+            print("Unexpected error:", sys.exc_info()[0])
             import traceback
             for line in traceback.format_stack():
                 print(line.strip())
