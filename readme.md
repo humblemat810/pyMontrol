@@ -1,4 +1,4 @@
-![TT](<img/logo.jpg>)
+![TT](<img/logo.png>)
 
 PyMontrol is a library to control data flow using python and MongoDB
 
