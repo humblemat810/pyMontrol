@@ -31,22 +31,26 @@ class controller:
     
     def routeEventStream(self,fullDocument, mongoClient):
         availableWorker = self.pop_free_worker(mongoClient)
-        while availableWorker is None:
+        worker_found = availableWorker is not None
+        while not worker_found:
             logging_info = 'no free worker found'
-            print(logging_info)
+            connections.client['log'] ['controller_log'].insert_one({'info' : logging_info})
+            # print(logging_info)
             for i in self.available_worker_event_stream:
                 if i['operationType'] == 'insert':
                     availableWorker = i['fullDocument']
                     worker_name = availableWorker['_id']
                     logging_info = 'found free worker ' + worker_name
-                    print(logging_info)
+                    connections.client['log'] ['controller_log'].insert_one({'info' : logging_info})
+                    # print(logging_info)
+                    worker_found = True
                     break
         worker_name = availableWorker['_id']
         mongoClient['worker'][worker_name].insert_one(fullDocument)
         logging_info = 'packet id' + str(fullDocument['_id']) + ' assigned to worker ' + str(worker_name)
         logging.info(logging_info )
-        print(logging_info)
-        
+        # print(logging_info)
+        connections.client['log'] ['controller_log'].insert_one({'infpo' : logging_info})
         pass
     
     def __init__(self):
@@ -130,7 +134,8 @@ class controller:
         event_cnt = 0
         for i in self.eventStream:
             event_cnt += 1
-            print('event count', event_cnt)
+            # print('event count', event_cnt)
+            connections.client['log'] ['controller_log'].insert_one({'event count' : event_cnt})
             if i['operationType'] == 'insert':
                 pass
             else:

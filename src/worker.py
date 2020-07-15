@@ -39,11 +39,7 @@ class worker:
                 }
             )
         pass
-    def process_eventStream(self,i):
-        
-        
-        
-        doc = i['fullDocument']
+    def process_doc(self, doc):
         import pickle
         data_unpickled = pickle.loads(doc ['data'])
         
@@ -79,6 +75,12 @@ class worker:
             logging.info('raw_data')
         import process_data
         process_data.process_data(data)
+    def process_eventStream(self,j):
+        # process existing doc
+        
+        
+        doc = j['fullDocument']
+        self.process_doc(doc)
         try:
             insert_result = self.client['worker']['availableWorker'].insert_one({'_id' : self.worker_collection_name,
                                                              'free-since' : int(time.time())})
@@ -86,7 +88,9 @@ class worker:
             pass
         print(self.worker_collection_name + ' is now free')
         self.client['worker'][self.worker_collection_name].delete_one(doc)
-        print('packet with _id', doc['_id'], 'processed and removed from worker')
+        print('packet with _id', j["_id"]['_data'], 'processed and removed from worker')
+        self.client['log']['log'].insert_one( { 'packetID' : j["_id"]['_data'],
+                                                       'activity'  : 'data_processed' } )
         pass
         
         
@@ -95,22 +99,24 @@ class worker:
         max_Queue_cnt = 10
         qcnt = 0
         q = Queue()
+        for doc in self.client['worker'][self.worker_collection_name].find():
+            self.process_doc(doc)
         for i in self.eventStream:
             from copy import deepcopy
             j = deepcopy(i)
             use_thread = True
             # print(i["_id"])
             
-            if i['operationType'] == 'insert':
+            if j['operationType'] == 'insert':
                 
                 # print(i["_id"])
                 pass
             else:
-                print('discarded activity ' + i['operationType'])
+                print('discarded activity ' + j['operationType'])
                 continue
             
             if use_thread:
-                x = threading.Thread(target=self.process_eventStream, args=(deepcopy(j),))
+                x = threading.Thread(target=self.process_eventStream, args=(j,))
                 x.start()
                 q.put(x)
                 
@@ -123,6 +129,8 @@ class worker:
             try:
                 assert j["_id"]['_data'] not in process_id
                 process_id.add( j["_id"]['_data'])
+                self.client['log']['log'].insert_one( { 'packetID' : j["_id"]['_data'],
+                                                       'activity'  : 'threadStarted' } )
             except:
                 print(j["_id"], ' already in process_id')
             
@@ -135,7 +143,7 @@ class worker:
             #         i.join()
             
             
-                
+        
                     
             
             # self.process_eventStream(i)
