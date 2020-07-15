@@ -32,4 +32,6 @@ import connections
 from control import controller 
 # controller.worker_reload('test_worker0')
 controller.kill_worker('test_worker0')
+controller.kill_worker('test_worker1')
+controller.kill_worker('test_worker2')
 # controller.kill_worker('test_worker6')

@@ -47,11 +47,12 @@ class worker:
             import pickle
             data_unpickled = pickle.loads(doc ['data'])
             
-            
+            print('data type : '  , type(data_unpickled) )
             if  type(data_unpickled) is data_ref.data_ref:
                 
                 data = data_unpickled.deref_data(mongoClient = self.client)
                 logging.info('deref_data')
+                print('deref_data')
             elif type(data_unpickled) is worker_command.worker_command:
                 if data_unpickled.command_str == 'kill':
                     logging_info = 'killing worker ' + str(self.worker_collection_name) +' by worker_command.worker_command'
@@ -95,8 +96,12 @@ class worker:
         qcnt = 0
         q = Queue()
         for i in self.eventStream:
-            x = threading.Thread(target=self.process_eventStream, args=(i,))
-            x.start()
+            use_thread = False
+            if use_thread:
+                x = threading.Thread(target=self.process_eventStream, args=(i,))
+                x.start()
+            else:
+                self.process_eventStream(i)
             # q.put(x)
             # qcnt+=1
             # if q.qsize() > max_Queue_cnt:

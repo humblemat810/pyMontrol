@@ -57,13 +57,14 @@ class controller:
                                     }
                                    }
                                   }]
+        event_stream_pipeline = []
         try:
             resume_token = connections.client['eventTrigger']['resume_token'].find_one()['value']
             # resume_token = bytes(resume_token, 'utf-8')
-            self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch(event_stream_pipeline, resume_after = resume_token)
+            self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch(resume_after = resume_token)
         except:
-            self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch(event_stream_pipeline)
-        self.available_worker_event_stream = connections.client['worker']['availableWorker'].watch(event_stream_pipeline)
+            self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch()
+        self.available_worker_event_stream = connections.client['worker']['availableWorker'].watch()
         pass
     @staticmethod
     def assert_worker_exist(worker_name):
