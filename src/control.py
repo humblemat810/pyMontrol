@@ -10,6 +10,9 @@ class controller:
     def atomic_auto_assign_new_data(self, new_doc, mongoClient):
         
         pass
+    def controller_register(self, controller_collection_name):
+        # lower priority, as one controller should already be able to afford huge loads, not tested
+        pass
     def atomic_assign_data(self, doc, mongoClient):
         # 1. listen to doc event stream, break if removed
         # within the event loop try get free worker
@@ -30,7 +33,9 @@ class controller:
     
     
     def routeEventStream(self,fullDocument, mongoClient):
+        # to be abstracted by using other load balancing algorithms====
         availableWorker = self.pop_free_worker(mongoClient)
+        #===========
         worker_found = availableWorker is not None
         while not worker_found:
             logging_info = 'no free worker found'
@@ -46,11 +51,16 @@ class controller:
                     worker_found = True
                     break
         worker_name = availableWorker['_id']
-        mongoClient['worker'][worker_name].insert_one(fullDocument)
+        # ========need to be change to atomic operation
+        insert_result = mongoClient['worker'][worker_name].insert_one(fullDocument)
+        # mark fullDocument routed by moving
         logging_info = 'packet id' + str(fullDocument['_id']) + ' assigned to worker ' + str(worker_name)
+        connections.client['log'] ['controller_log'].insert_one({'info' : logging_info})
+        #========= atomic finish
+        
         logging.info(logging_info )
         # print(logging_info)
-        connections.client['log'] ['controller_log'].insert_one({'infpo' : logging_info})
+        
         pass
     
     def __init__(self):
@@ -144,7 +154,7 @@ class controller:
             # time.sleep(1)
             x = threading.Thread(target = self.process_eventStream, args = (deepcopy(i),))
             x.start()
-            
+# so far single controller supported
 if __name__ == '__main__':
     my_controller = controller()
     
