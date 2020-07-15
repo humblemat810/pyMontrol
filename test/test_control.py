@@ -28,10 +28,11 @@ def send_data_by_thread(data):
                                                        mongoClient = connections.client)
     my_data_ref.documentID = data_ref_insert_result.inserted_id
     pass
-use_thread = False
-for i in range(1):
+use_thread = True
+for i in range(20):
     if use_thread:
-        x = threading.Thread(target = send_data_by_thread, args = (data,))
+        from copy import deepcopy
+        x = threading.Thread(target = send_data_by_thread, args = (deepcopy(data),))
         x.start()
     else:
         send_data_by_thread(data)

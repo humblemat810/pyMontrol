@@ -8,7 +8,8 @@ class exit_code_class:
     
 exit_code = exit_code_class()
 from  pymongo.errors import DuplicateKeyError
-
+global process_id
+process_id = set()
 class worker:
     
     def __init__(self):
@@ -40,74 +41,100 @@ class worker:
         pass
     def process_eventStream(self,i):
         
-        logging.info('event found :'+ str(i))
         
-        if i['operationType'] == 'insert':
-            doc = i['fullDocument']
-            import pickle
-            data_unpickled = pickle.loads(doc ['data'])
+        
+        doc = i['fullDocument']
+        import pickle
+        data_unpickled = pickle.loads(doc ['data'])
+        
+        # print('data type : '  , type(data_unpickled) )
+        if  type(data_unpickled) is data_ref.data_ref:
             
-            print('data type : '  , type(data_unpickled) )
-            if  type(data_unpickled) is data_ref.data_ref:
+            data = data_unpickled.deref_data(mongoClient = self.client)
+            logging.info('deref_data')
+            print('deref_data')
+        elif type(data_unpickled) is worker_command.worker_command:
+            if data_unpickled.command_str == 'kill':
+                logging_info = 'killing worker ' + str(self.worker_collection_name) +' by worker_command.worker_command'
+                logging.info(logging_info)
+                self.client['worker'][self.worker_collection_name].drop()
+                self.client['worker']['availableWorker'].remove({'_id': self.worker_collection_name})
+                print(logging_info)
+                self.being_kill = True
+                self.eventStream.close()
+                return exit_code.kill_worker
+            if data_unpickled.command_str == 'reload_code':
+                import builtins
+                from IPython.lib import deepreload
+                builtins.reload = deepreload.reload
+                logging_info = 'worker ' + self.worker_collection_name + ' reloaded code'
+                print(logging_info)
+                logging.info(logging_info)
                 
-                data = data_unpickled.deref_data(mongoClient = self.client)
-                logging.info('deref_data')
-                print('deref_data')
-            elif type(data_unpickled) is worker_command.worker_command:
-                if data_unpickled.command_str == 'kill':
-                    logging_info = 'killing worker ' + str(self.worker_collection_name) +' by worker_command.worker_command'
-                    logging.info(logging_info)
-                    self.client['worker'][self.worker_collection_name].drop()
-                    self.client['worker']['availableWorker'].remove({'_id': self.worker_collection_name})
-                    print(logging_info)
-                    self.being_kill = True
-                    self.eventStream.close()
-                    return exit_code.kill_worker
-                if data_unpickled.command_str == 'reload_code':
-                    import builtins
-                    from IPython.lib import deepreload
-                    builtins.reload = deepreload.reload
-                    logging_info = 'worker ' + self.worker_collection_name + ' reloaded code'
-                    print(logging_info)
-                    logging.info(logging_info)
-                    
-                    return
-                pass
-            else :
-                # assume data_unpickled is direct data
-                data = data_unpickled
-                logging.info('raw_data')
-            import process_data
-            process_data.process_data(data)
-            try:
-                insert_result = self.client['worker']['availableWorker'].insert_one({'_id' : self.worker_collection_name,
-                                                                 'free-since' : int(time.time())})
-            except DuplicateKeyError:
-                pass
-            print(self.worker_collection_name + ' is now free')
-            self.client['worker'][self.worker_collection_name].delete_one(doc)
-            print('packet with _id', doc['_id'], 'processed and removed from worker')
+                return
             pass
+        else :
+            # assume data_unpickled is direct data
+            data = data_unpickled
+            logging.info('raw_data')
+        import process_data
+        process_data.process_data(data)
+        try:
+            insert_result = self.client['worker']['availableWorker'].insert_one({'_id' : self.worker_collection_name,
+                                                             'free-since' : int(time.time())})
+        except DuplicateKeyError:
+            pass
+        print(self.worker_collection_name + ' is now free')
+        self.client['worker'][self.worker_collection_name].delete_one(doc)
+        print('packet with _id', doc['_id'], 'processed and removed from worker')
         pass
-        pass
+        
+        
     def work(self):
         from queue import Queue
         max_Queue_cnt = 10
         qcnt = 0
         q = Queue()
         for i in self.eventStream:
-            use_thread = False
-            if use_thread:
-                x = threading.Thread(target=self.process_eventStream, args=(i,))
-                x.start()
+            from copy import deepcopy
+            j = deepcopy(i)
+            use_thread = True
+            # print(i["_id"])
+            
+            if i['operationType'] == 'insert':
+                
+                # print(i["_id"])
+                pass
             else:
-                self.process_eventStream(i)
-            # q.put(x)
-            # qcnt+=1
+                print('discarded activity ' + i['operationType'])
+                continue
+            
+            if use_thread:
+                x = threading.Thread(target=self.process_eventStream, args=(deepcopy(j),))
+                x.start()
+                q.put(x)
+                
+            else:
+                self.process_eventStream(j)
+            import time
+            # time.sleep(1)
+            qcnt+=1
+            global process_id
+            try:
+                assert j["_id"]['_data'] not in process_id
+                process_id.add( j["_id"]['_data'])
+            except:
+                print(j["_id"], ' already in process_id')
+            
+            print('processed', qcnt, 'packets')
             # if q.qsize() > max_Queue_cnt:
             #     my_list = []
             #     while not q.empty():
             #         my_list.append(q.get())
+            #     for i in my_list:
+            #         i.join()
+            
+            
                 
                     
             

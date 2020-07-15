@@ -129,9 +129,15 @@ class controller:
     def manage_new_data_for_execution(self):
         event_cnt = 0
         for i in self.eventStream:
-            print('event found', event_cnt)
             event_cnt += 1
-            x = threading.Thread(target = self.process_eventStream, args = (i,))
+            print('event count', event_cnt)
+            if i['operationType'] == 'insert':
+                pass
+            else:
+                continue
+            from copy import deepcopy
+            # time.sleep(1)
+            x = threading.Thread(target = self.process_eventStream, args = (deepcopy(i),))
             x.start()
             
 if __name__ == '__main__':
