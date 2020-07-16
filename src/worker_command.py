@@ -7,6 +7,6 @@ Created on Fri Jul 10 22:51:47 2020
 
 class worker_command:
     def __init__(self, command_str):
-        self.command_str = command_str
+        self.command_json = command_str
         pass
     pass

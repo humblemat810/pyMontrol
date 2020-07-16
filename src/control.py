@@ -33,6 +33,7 @@ class controller:
         pass
     def worker_register(self, worker_collection_name = None, registration_collection = 'availableController'):
         self.worker_collection_name = worker_collection_name
+        self.name = worker_collection_name
         self.registration_collection = registration_collection
         try: 
             insert_result  = self.client['worker'][registration_collection].insert_one({'_id' : worker_collection_name, 
@@ -42,7 +43,7 @@ class controller:
         except pymongo.errors.DuplicateKeyError as e:
             print('worker registered, try next, future will implement to test if that worker is dead and resume its role')
             return (exit_code.fail, e)
-            
+        print("listening to ",'worker', worker_collection_name)
         self.eventStream = self.client['worker'][worker_collection_name].watch()
         event_stream_pipeline = [{"$match" : 
                                   {'operationType' :
@@ -156,6 +157,7 @@ class controller:
     def process_dataStream(self, i):
         # print(i)
         if 'command' in i:
+            # controller non specific commands here
             if i['command'] == 'break':
                 resume_token = i['_id']
                 connections.client['eventTrigger']['resume_token'].replace_one({'_id': 'resume_token'}, 
@@ -177,22 +179,75 @@ class controller:
     def work(self):
         return self.manage_new_data_for_execution()
         pass
+    def to_be_threaded_to_handle_controller_command(self):
+        '''
+        import controller_command
+        import data_ref as df
+        controller_to_kill = 'test_controller0'
+        kill_command = controller_command.controller_command('kill')
+        my_data_ref = dr.data_ref(db = 'worker', collection = controller_to_kill)
+        my_data_ref.data_insert(data = kill_command, connectionStr = None, mongoClient = connections.client)
+        '''
+        
+        print('thread....')
+        for i in self.eventStream:
+            doc = i['fullDocument']
+            data_unpickled = pickle.loads(doc ['data'])
+            print('command unpickled', 'type', type(data_unpickled))
+            if type(data_unpickled) is controller_command.controller_command:
+                if type(data_unpickled.command) is str:
+                    if data_unpickled.command == 'kill':
+                        print('kill_command_received')
+                        self.being_kill = True
+                if type(data_unpickled.command) is dict:
+                    if 'kill' in data_unpickled.command:
+                        if self.command['kill'] == self.worker_collection_name:
+                            print('kill_command_received')
+                            self.being_kill = True
+                        
+                if self.being_kill:
+                    print('closing data stream')
+                    self.dataStream.close()
+                    print('closing event stream')
+                    self.eventStream.close()
+                    self.client['worker'][self.registration_collection].delete_one({'_id' : self.worker_collection_name})
+                    
+                    break
+                pass
+            
+            pass
+        print('end thread')
+        pass
+        
     def manage_new_data_for_execution(self):
         event_cnt = 0
-        
-        for i in self.dataStream:
-            event_cnt += 1
-            # print('event count', event_cnt)
-            connections.client['log'] ['controller_log'].insert_one({'event count' : event_cnt})
-            if i['operationType'] == 'insert':
+        import threading
+        y = threading.Thread(target = self.to_be_threaded_to_handle_controller_command)
+        y.start()
+        # self.to_be_threaded_to_handle_controller_command()
+        try:
+            for i in self.dataStream:
+                event_cnt += 1
+                # print('event count', event_cnt)
+                connections.client['log'] ['controller_log'].insert_one({'event count' : event_cnt})
+                if i['operationType'] == 'insert':
+                    pass
+                else:
+                    continue
+                from copy import deepcopy
+                # time.sleep(1)
+                x = threading.Thread(target = self.process_dataStream, args = (deepcopy(i),))
+                x.start()
+        except Exception as e:
+            if e.args[0] == 'Error in $cursor stage :: caused by :: operation was interrupted':
+                # ok
                 pass
             else:
-                continue
-            from copy import deepcopy
-            # time.sleep(1)
-            x = threading.Thread(target = self.process_dataStream, args = (deepcopy(i),))
-            x.start()
+                print('err')
+                raise
+            pass
         if self.being_kill:
+            print('=========== being killed ==========manage_new_data_for_execution')
             return exit_code.kill_worker
         # reach here if resume after is done
         
