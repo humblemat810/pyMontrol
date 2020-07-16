@@ -10,6 +10,9 @@ class controller:
     def atomic_auto_assign_new_data(self, new_doc, mongoClient):
         
         pass
+    def controller_register(self, controller_collection_name):
+        # lower priority, as one controller should already be able to afford huge loads, not tested
+        pass
     def atomic_assign_data(self, doc, mongoClient):
         # 1. listen to doc event stream, break if removed
         # within the event loop try get free worker
@@ -30,22 +33,33 @@ class controller:
     
     
     def routeEventStream(self,fullDocument, mongoClient):
+        # to be abstracted by using other load balancing algorithms====
         availableWorker = self.pop_free_worker(mongoClient)
-        while availableWorker is None:
+        #===========
+        worker_found = availableWorker is not None
+        while not worker_found:
             logging_info = 'no free worker found'
-            print(logging_info)
+            connections.client['log'] ['controller_log'].insert_one({'info' : logging_info})
+            # print(logging_info)
             for i in self.available_worker_event_stream:
                 if i['operationType'] == 'insert':
                     availableWorker = i['fullDocument']
                     worker_name = availableWorker['_id']
                     logging_info = 'found free worker ' + worker_name
-                    print(logging_info)
+                    connections.client['log'] ['controller_log'].insert_one({'info' : logging_info})
+                    # print(logging_info)
+                    worker_found = True
                     break
         worker_name = availableWorker['_id']
-        mongoClient['worker'][worker_name].insert_one(fullDocument)
+        # ========need to be change to atomic operation
+        insert_result = mongoClient['worker'][worker_name].insert_one(fullDocument)
+        # mark fullDocument routed by moving
         logging_info = 'packet id' + str(fullDocument['_id']) + ' assigned to worker ' + str(worker_name)
+        connections.client['log'] ['controller_log'].insert_one({'info' : logging_info})
+        #========= atomic finish
+        
         logging.info(logging_info )
-        print(logging_info)
+        # print(logging_info)
         
         pass
     
@@ -57,13 +71,14 @@ class controller:
                                     }
                                    }
                                   }]
+        event_stream_pipeline = []
         try:
             resume_token = connections.client['eventTrigger']['resume_token'].find_one()['value']
             # resume_token = bytes(resume_token, 'utf-8')
-            self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch(event_stream_pipeline, resume_after = resume_token)
+            self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch(resume_after = resume_token)
         except:
-            self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch(event_stream_pipeline)
-        self.available_worker_event_stream = connections.client['worker']['availableWorker'].watch(event_stream_pipeline)
+            self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch()
+        self.available_worker_event_stream = connections.client['worker']['availableWorker'].watch()
         pass
     @staticmethod
     def assert_worker_exist(worker_name):
@@ -128,11 +143,18 @@ class controller:
     def manage_new_data_for_execution(self):
         event_cnt = 0
         for i in self.eventStream:
-            print('event found', event_cnt)
             event_cnt += 1
-            x = threading.Thread(target = self.process_eventStream, args = (i,))
+            # print('event count', event_cnt)
+            connections.client['log'] ['controller_log'].insert_one({'event count' : event_cnt})
+            if i['operationType'] == 'insert':
+                pass
+            else:
+                continue
+            from copy import deepcopy
+            # time.sleep(1)
+            x = threading.Thread(target = self.process_eventStream, args = (deepcopy(i),))
             x.start()
-            
+# so far single controller supported
 if __name__ == '__main__':
     my_controller = controller()
     
