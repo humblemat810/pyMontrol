@@ -11,3 +11,10 @@ client = connections.client
 client.drop_database('worker')
 client.drop_database('eventTrigger')
 client.drop_database('log')
+
+
+import glob, os
+
+listing = glob.glob('*.log')
+for filename in listing:
+    os.remove(filename)

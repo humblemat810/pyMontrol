@@ -1,2 +1,3 @@
 worker_time_out : 120
 strict_mode : True
+use_thread : false

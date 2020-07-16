@@ -22,7 +22,7 @@ def debug_decorater( to_decorate):
             logging.info('error' +  str(e))
             import sys
             print("Unexpected error:", sys.exc_info()[0])
-            logging.info("Unexpected error:" +  sys.exc_info()[0])
+            logging.info("Unexpected error:" +  str(sys.exc_info()[0]))
             import traceback
             for line in traceback.format_stack():
                 print(line.strip())

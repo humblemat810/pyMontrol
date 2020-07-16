@@ -1,15 +1,22 @@
 import logging, pathlib, yaml, controller_command
-
+logger = None
 with open(str(pathlib.Path(r'./control_config.yaml')), 'r') as file:
     control_config = yaml.safe_load(file)
 strict_mode = False
 if 'strict_mode' in control_config:
     strict_mode = control_config['strict_mode']
+use_thread = False
+if 'use_thread' in control_config:
+    use_thread = control_config['use_thread']    
 from  all_decorate import for_all_methods, debug_decorater
 import connections
 import time , threading, datetime
 import pickle, pymongo
-
+logging.basicConfig(filename='controller.log', filemode='a', 
+                    format="%(asctime)s — %(name)s — %(levelname)s — %(funcName)s:%(lineno)d — %(message)s",
+                    level=logging.DEBUG,
+                    datefmt='%Y-%m-%d %H:%M:%S')
+logger = logging.getLogger(__file__)
 
 class exit_code_class:
     kill_worker = 0
@@ -17,36 +24,81 @@ class exit_code_class:
     break_current_and_continue = 2
     success = 3
 exit_code = exit_code_class()
+
 @for_all_methods(debug_decorater)
 class controller:
-    def atomic_auto_assign_new_data(self, new_doc, mongoClient):
+    # def atomic_auto_assign_new_data(self, new_doc, mongoClient):
         
-        pass
+    #     pass
     def controller_register(self, controller_collection_name):
         # lower priority, as one controller should already be able to afford huge loads, not tested
         pass
-    def atomic_assign_data(self, doc, mongoClient):
-        # 1. listen to doc event stream, break if removed
-        # within the event loop try get free worker
-        # if none free worker, listen for free worker add event
-        # atomic transaction : 1. remove worker from free, 2. delete doc from in data packet stream, 3, add data packet to free worker
+    def atomic_assign_data(self, doc, mongoClient, db_from , col_from ,db_to,  col_to):
+        from pymongo.read_concern import ReadConcern
+        from pymongo.write_concern import WriteConcern
+        from pymongo.read_preferences import ReadPreference
+        wc_majority = WriteConcern("majority", wtimeout=2000)
         
+        # def callback(session):
+        #     logging_info = 'packet id' + str(doc['_id']) + ' assigned to worker ' + str(worker_name)
         
+        #     collection_from = mongoClient[db_from][col_from]
+        #     collection_to= mongoClient[db_to][col_to]
+        
+        #     # Important:: You must pass the session to the operations.
+        #     collection_from.delete_one({'_id' : doc['_id']}, session=session)
+        #     collection_to.insert_one(doc, session=session)
+        #     mongoClient['log'] ['controller_log'].insert_one({'info' : logging_info, 'datetime' : datetime.now()}, session = session)
+        from copy import deepcopy
+        import numpy as np, pickle
+        to_send = deepcopy(doc)
+        to_send.pop('_id')
+        collection_from = mongoClient[db_from][col_from]
+        collection_to= mongoClient[db_to][col_to]
+        session=  mongoClient.start_session()
+        session.start_transaction(read_concern=ReadConcern('local'),
+                                  write_concern=wc_majority)
+        logging_info = 'packet id' + str(doc['_id']) + ' assigned to worker ' + str(worker_name)
+        # Important:: You must pass the session to the operations.
+        collection_from.delete_one({'_id' : doc['_id']}, session=session)
+        # mongoClient['worker']['test_worker0'].insert_one({ 'as':pickle.dumps(np.arange(200))}, session = session)
+        # mongoClient['worker']['test_worker0'].update_one({'data' : doc['data']}, upesert = True, session = session)
+        collection_to.replace_one({'_id' : doc['_id']}, doc , upsert = True, session = session)
+        # mongoClient['worker']['test_worker0'].insert_one({'aa' : 1}, session = session)
+        # collection_to.insert_one(doc, session=session)
+        mongoClient['log'] ['controller_log'].insert_one({'info' : logging_info, "utctime": datetime.datetime.utcnow()}, session = session)
+        session.commit_transaction()
+        session.end_session()
+        # session.with_transaction(
+        # callback, 
+        # read_concern=ReadConcern('local'),
+        # write_concern=wc_majority,
+        # read_preference=ReadPreference.PRIMARY)
         
         pass
     def worker_register(self, worker_collection_name = None, registration_collection = 'availableController'):
         self.worker_collection_name = worker_collection_name
         self.name = worker_collection_name
         self.registration_collection = registration_collection
+        if worker_collection_name not in self.client['worker'].list_collection_names():
+            self.client['worker'][worker_collection_name].insert_one({'tag':'beginning'})
+            
+            time.sleep(0.5)
         try: 
             insert_result  = self.client['worker'][registration_collection].insert_one({'_id' : worker_collection_name, 
                                                              'free-since' : int(time.time()),
                                                              'alive' : True
                                                              })
         except pymongo.errors.DuplicateKeyError as e:
-            logging.info('worker registered, try next, future will implement to test if that worker is dead and resume its role')
+            # logger.info('worker registered, try next, future will implement to test if that worker is dead and resume its role')
             return (exit_code.fail, e)
-        logging.info("listening to " + 'worker' + worker_collection_name)
+        
+        # self.dataStream = 
+        return exit_code.success, None
+        pass
+    def worker_listen(self,):
+        worker_collection_name = self.worker_collection_name
+        logger.info("listening to " + 'worker' + worker_collection_name)
         self.eventStream = self.client['worker'][worker_collection_name].watch()
         event_stream_pipeline = [{"$match" : 
                                   {'operationType' :
@@ -62,18 +114,15 @@ class controller:
             resume_token = connections.client['eventTrigger']['resume_token'].find_one()['value']
             # resume_token = bytes(resume_token, 'utf-8')
             self.dataStream = connections.client['eventTrigger']['data_packet_input'].watch(resume_after = resume_token)
-            logging.info('resume_after' + str(resume_token))
+            logger.info('resume_after' + str(resume_token))
         except:
             self.dataStream = connections.client['eventTrigger']['data_packet_input'].watch()
         self.available_worker_event_stream = connections.client['worker']['availableWorker'].watch()
-        # self.dataStream = 
-        return exit_code.success, None
         pass
-    
     def pop_free_worker(self, mongoClient, worker_colection  = "availableWorker"):
         
-        availableWorker = mongoClient['worker']['availableWorker'].find_one_and_delete({})
-        
+        # availableWorker = mongoClient['worker']['availableWorker'].find_one_and_delete({})
+        availableWorker = mongoClient['worker']['availableWorker'].find_one({})
         return(availableWorker)
         pass
     
@@ -88,28 +137,36 @@ class controller:
             connections.client['log'] ['controller_log'].insert_one({'info' : logging_info, 
                                                                      "utctime": datetime.datetime.utcnow()}
                                                                     )
-            # logging.info(logging_info)
+            # logger.info(logging_info)
             for i in self.available_worker_event_stream:
                 if i['operationType'] == 'insert':
-                    availableWorker = i['fullDocument']
-                    worker_name = availableWorker['_id']
-                    logging_info = 'found free worker ' + worker_name
-                    connections.client['log'] ['controller_log'].insert_one({'info' : logging_info})
-                    # logging.info(logging_info)
-                    worker_found = True
+                    # availableWorker = i['fullDocument']
+                    # worker_name = availableWorker['_id']
+                    availableWorker = self.pop_free_worker(mongoClient)
+                    
+                    # logger.info(logging_info)
+                    if availableWorker is not None:
+                        worker_found = True
+                        logging_info = 'found free worker ' + worker_name
+                        connections.client['log'] ['controller_log'].insert_one({'info' : logging_info, "utctime": datetime.datetime.utcnow()})
                     break
         
         worker_name = availableWorker['_id']
-        logging.info('worker assign '+ worker_name)
-        # ========need to be change to atomic operation
-        insert_result = mongoClient['worker'][worker_name].insert_one(fullDocument)
-        # mark fullDocument routed by moving
-        logging_info = 'packet id' + str(fullDocument['_id']) + ' assigned to worker ' + str(worker_name)
-        connections.client['log'] ['controller_log'].insert_one({'info' : logging_info})
-        #========= atomic finish
+        logger.info('worker assign '+ worker_name)
+        # # ========need to be change to atomic operation
+        # insert_result = mongoClient['worker'][worker_name].insert_one(fullDocument)
+        # # mark fullDocument routed by moving
+        # logging_info = 'packet id' + str(fullDocument['_id']) + ' assigned to worker ' + str(worker_name)
+        # connections.client['log'] ['controller_log'].insert_one({'info' : logging_info})
+        # #========= atomic finish
+        # logger.info(logging_info )
+        db_from = 'eventTrigger'
+        col_from = 'data_packet_input'
+        db_to = 'worker'
+        col_to = worker_name
+        self.atomic_assign_data(fullDocument,mongoClient, db_from, col_from, db_to, col_to)
         
-        logging.info(logging_info )
-        # logging.info(logging_info)
+        # logger.info(logging_info)
         
         pass
     
@@ -160,27 +217,27 @@ class controller:
         pass
 
     def process_dataStream(self, i):
-        # logging.info(i)
-        if 'command' in i:
+        # logger.info(i)
+        if 'command' in i['fullDocument']:
             # controller non specific commands here
-            if i['command'] == 'break':
-                resume_token = i['_id']
-                connections.client['eventTrigger']['resume_token'].replace_one({'_id': 'resume_token'}, 
-                                                                       {'_id': 'resume_token', 'value': resume_token['_data']},
-                                                                       upsert = True
-                                                                       )    
-                pass
-        
+            # if i['command'] == 'break':
+            #     resume_token = i['_id']
+            #     connections.client['eventTrigger']['resume_token'].replace_one({'_id': 'resume_token'}, 
+            #                                                            {'_id': 'resume_token', 'value': resume_token['_data']},
+            #                                                            upsert = True
+            #                                                            )    
+                # pass
+            pass
         elif i['operationType'] == 'insert':
 
             self.routeDataStream(i['fullDocument'], connections.client)
-        logging.info('b4 resume token')
+        logger.info('b4 resume token')
         resume_token = i['_id']
         connections.client['eventTrigger']['resume_token'].replace_one({'_id': 'resume_token'}, 
                                                                        {'_id': 'resume_token', 'value': resume_token},
                                                                        upsert = True
                                                                        )
-        logging.info('after resume token')
+        logger.info('after resume token')
         pass
     def work(self):
         return self.manage_new_data_for_execution()
@@ -195,26 +252,26 @@ class controller:
         my_data_ref.data_insert(data = kill_command, connectionStr = None, mongoClient = connections.client)
         '''
         
-        logging.info('thread....')
+        logger.info('thread....')
         for i in self.eventStream:
             doc = i['fullDocument']
             data_unpickled = pickle.loads(doc ['data'])
-            logging.info('command unpickled '+ 'type' + str(type(data_unpickled)))
+            logger.info('command unpickled '+ 'type' + str(type(data_unpickled)))
             if type(data_unpickled) is controller_command.controller_command:
                 if type(data_unpickled.command) is str:
                     if data_unpickled.command == 'kill':
-                        logging.info('kill_command_received')
+                        logger.info('kill_command_received')
                         self.being_kill = True
                 if type(data_unpickled.command) is dict:
                     if 'kill' in data_unpickled.command:
                         if self.command['kill'] == self.worker_collection_name:
-                            logging.info('kill_command_received')
+                            logger.info('kill_command_received')
                             self.being_kill = True
                         
                 if self.being_kill:
-                    logging.info('closing data stream')
+                    logger.info('closing data stream')
                     self.dataStream.close()
-                    logging.info('closing event stream')
+                    logger.info('closing event stream')
                     self.eventStream.close()
                     self.client['worker'][self.registration_collection].delete_one({'_id' : self.worker_collection_name})
                     
@@ -222,27 +279,29 @@ class controller:
                 pass
             
             pass
-        logging.info('end thread')
+        logger.info('end thread')
         pass
         
     def manage_new_data_for_execution(self):
         event_cnt = 0
         import threading
+        
         y = threading.Thread(target = self.to_be_threaded_to_handle_controller_command)
         y.start()
+        
         # self.to_be_threaded_to_handle_controller_command()
         try:
             for i in self.dataStream:
                 event_cnt += 1
-                # logging.info('event count', event_cnt)
-                connections.client['log'] ['controller_log'].insert_one({'event count' : event_cnt})
+                logger.info('event count', event_cnt)
+                connections.client['log'] ['controller_log'].insert_one({'event count' : event_cnt, "utctime": datetime.datetime.utcnow()})
                 if i['operationType'] == 'insert':
                     pass
                 else:
                     continue
                 from copy import deepcopy
                 # time.sleep(1)
-                use_thread = True
+                
                 if use_thread:
                     x = threading.Thread(target = self.process_dataStream, args = (deepcopy(i),))
                     x.start()
@@ -253,11 +312,11 @@ class controller:
                 # ok
                 pass
             else:
-                logging.info('err')
+                logger.info('err')
                 raise
             pass
         if self.being_kill:
-            logging.info('=========== being killed ==========manage_new_data_for_execution')
+            logger.info('=========== being killed ==========manage_new_data_for_execution')
             return exit_code.kill_worker
         # reach here if resume after is done
         
@@ -282,14 +341,21 @@ if __name__ == '__main__':
             worker_name = worker_name_prefix  + str(num)
             result = my_worker.worker_register(worker_collection_name = worker_name)
             log_f_name = str(pathlib.Path( worker_name + '.log'))
-            logging.basicConfig(filename=log_f_name, filemode='a', 
-                    format='%(asctime)s %(levelname)-8s %(message)s',
-                    level=logging.DEBUG,
-                    datefmt='%Y-%m-%d %H:%M:%S')
+            
             import os
             print('log file set as ' + str(pathlib.Path(os.getcwd()) / log_f_name))
-            logging.info('start...')
+            # log_ff_name = str(pathlib.Path(os.getcwd()) / log_f_name)
+            FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
             
+            logger = logging.getLogger(__file__ + '_' + worker_name)
+            for hdlr in logger.handlers[:]:  # remove all old handlers
+                logger.removeHandler(hdlr)
+            formatter = logging.Formatter(FORMAT)
+            fileh = logging.FileHandler('./' +worker_name + '.log', 'a')
+            fileh.setFormatter(formatter)
+            logger.addHandler(fileh) 
+            logger.info('start')
+            my_worker.worker_listen()
             if result is None:
                 raise(Exception('abnormal register exit'))
             result_code, success_or_err = result
@@ -298,7 +364,7 @@ if __name__ == '__main__':
                     raise(success_or_err)
                 pass
             else:
-                logging.info('worker registered as '+ worker_name)
+                logger.info('worker registered as '+ worker_name)
                 worker_exit_code = my_worker.work()
                 if worker_exit_code == exit_code.kill_worker:
                     break
@@ -307,7 +373,7 @@ if __name__ == '__main__':
                 if worker_exit_code == exit_code.break_current_and_continue:
                     continue
                 # connections.client['log'] ['controller_log'].insert_one({'event count' : event_cnt})
-                logging.info('this line should show up once when the controller start up with resume after enabled, when the resume after queue is emptied')
+                logger.info('this line should show up once when the controller start up with resume after enabled, when the resume after queue is emptied')
             
         except:
             if strict_mode:
