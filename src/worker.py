@@ -20,7 +20,7 @@ exit_code = exit_code_class()
 from  pymongo.errors import DuplicateKeyError
 global process_id
 process_id = set()
-logging.basicConfig(filename=__file__, filemode='a', 
+logging.basicConfig(filename='worker.log', filemode='a', 
                     format="%(asctime)s â€” %(name)s â€” %(levelname)s â€” %(funcName)s:%(lineno)d â€” %(message)s",
                     level=logging.DEBUG,
                     datefmt='%Y-%m-%d %H:%M:%S')
@@ -205,7 +205,7 @@ if __name__ == '__main__':
         try:
             worker_name = worker_name_prefix  + str(num)
             my_worker.worker_register(worker_collection_name = worker_name)
-            FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
+            FORMAT = "%(asctime)s â€” %(name)s â€” %(levelname)s â€” %(funcName)s:%(lineno)d â€” %(message)s"
             
             logger = logging.getLogger(__file__ + '_' + worker_name)
             for hdlr in logger.handlers[:]:  # remove all old handlers
@@ -237,5 +237,3 @@ if __name__ == '__main__':
     # x.start()
     
     pass
-2020-07-16 22:04:43 — C:\Users\ASUS\Documents\python\pymontroller\src\worker.py_test_worker1 — INFO — <module>:217 — start
-2020-07-16 22:04:43 — C:\Users\ASUS\Documents\python\pymontroller\src\worker.py_test_worker1 — INFO — <module>:220 — worker registered as test_worker1

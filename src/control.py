@@ -17,7 +17,7 @@ logging.basicConfig(filename='controller.log', filemode='a',
                     level=logging.DEBUG,
                     datefmt='%Y-%m-%d %H:%M:%S')
 logger = logging.getLogger(__file__)
-
+logger.info('baselogger set for controll.py')
 class exit_code_class:
     kill_worker = 0
     fail = 1
@@ -293,7 +293,7 @@ class controller:
         try:
             for i in self.dataStream:
                 event_cnt += 1
-                logger.info('event count', event_cnt)
+                logger.info('event count' + str( event_cnt))
                 connections.client['log'] ['controller_log'].insert_one({'event count' : event_cnt, "utctime": datetime.datetime.utcnow()})
                 if i['operationType'] == 'insert':
                     pass
@@ -345,7 +345,7 @@ if __name__ == '__main__':
             import os
             print('log file set as ' + str(pathlib.Path(os.getcwd()) / log_f_name))
             # log_ff_name = str(pathlib.Path(os.getcwd()) / log_f_name)
-            FORMAT = "[%(filename)s:%(lineno)s - %(funcName)20s() ] %(message)s"
+            FORMAT = "%(asctime)s — %(name)s — %(levelname)s — %(funcName)s:%(lineno)d — %(message)s"
             
             logger = logging.getLogger(__file__ + '_' + worker_name)
             for hdlr in logger.handlers[:]:  # remove all old handlers
