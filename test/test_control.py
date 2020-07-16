@@ -9,9 +9,10 @@ sys.path.append(str(pathlib.Path('../src/')))
 import connections
 import data_ref as dr
 from data_map_processor import process_dag
+import numpy as np
 my_process_dag = process_dag()
 my_process_dag.add_node('input0', 'load_tensorflow')
-data = {'data' : 121, 'dag' : my_process_dag, 'current_node_name' : 'input0'}
+data = {'data' : np.arange(121), 'dag' : my_process_dag, 'current_node_name' : 'input0'}
 
 
 import threading

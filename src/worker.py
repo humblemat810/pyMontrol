@@ -1,6 +1,7 @@
 
 import data_ref, worker_command
 import logging, time, threading
+
 class exit_code_class:
     kill_worker = 0
     fail = 1
@@ -49,7 +50,7 @@ class worker:
             
             data = data_unpickled.deref_data(mongoClient = self.client)
             logging.info('deref_data')
-            print('deref_data')
+            # print('deref_data')
         elif type(data_unpickled) is worker_command.worker_command:
             if data_unpickled.command_str == 'kill':
                 logging_info = 'killing worker ' + str(self.worker_collection_name) +' by worker_command.worker_command'
@@ -87,9 +88,13 @@ class worker:
                                                              'free-since' : int(time.time())})
         except DuplicateKeyError:
             pass
-        print(self.worker_collection_name + ' is now free')
+        logging_info = self.worker_collection_name + ' is now free'
+        print(logging_info)
+        logging.info(logging_info)
         self.client['worker'][self.worker_collection_name].delete_one(doc)
-        print('packet with _id', j["_id"]['_data'], 'processed and removed from worker')
+        logging_info = 'packet with _id', j["_id"]['_data'] + 'processed and removed from worker'
+        print(logging_info)
+        logging.info(logging_info)
         self.client['log']['log'].insert_one( { 'packetID' : j["_id"]['_data'],
                                                        'activity'  : 'data_processed' } )
         pass
@@ -113,7 +118,9 @@ class worker:
                 # print(i["_id"])
                 pass
             else:
-                print('discarded activity ' + j['operationType'])
+                logging_info = ('discarded activity ' + j['operationType'])
+                print(logging_info)
+                logging.info(logging_info)
                 continue
             
             if use_thread:
@@ -133,9 +140,14 @@ class worker:
                 self.client['log']['log'].insert_one( { 'packetID' : j["_id"]['_data'],
                                                        'activity'  : 'threadStarted' } )
             except:
-                print(j["_id"], ' already in process_id')
+                logging_info = j["_id"] + ' already in process_id'
+                print(logging_info)
+                logging.info(logging_info)
+                
             
-            print('processed', qcnt, 'packets')
+            logging_info = 'processed' + str(qcnt) + 'packets'
+            print(logging_info)
+            logging.info(logging_info)
             # if q.qsize() > max_Queue_cnt:
             #     my_list = []
             #     while not q.empty():
@@ -168,9 +180,14 @@ if __name__ == '__main__':
     while fail_cnt < 10:
         try:
             worker_name = worker_name_prefix  + str(num)
-            logging.basicConfig(filename='./' + worker_name + '.log', filemode='a', format='%(name)s - %(levelname)s - %(message)s', level=logging.DEBUG)
             my_worker.worker_register(worker_collection_name = worker_name)
-            print('worker registered as ', worker_name)
+            logging.basicConfig(filename='./' +worker_name + '.log', filemode='a', 
+                    format='%(asctime)s %(levelname)-8s %(message)s',
+                    level=logging.DEBUG,
+                    datefmt='%Y-%m-%d %H:%M:%S')
+            logging_info = 'worker registered as '+ worker_name
+            print(logging_info)
+            logging.info(logging_info)
             worker_exit_code = my_worker.work()
             if worker_exit_code == exit_code.kill_worker:
                 break
