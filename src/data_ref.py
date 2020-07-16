@@ -14,6 +14,15 @@ def resolve_mongo_client(**kwarg):
         raise ValueError('fail to resolve mongo client')
         pass
     return mongoClient
+class external_data_ref:
+    # custom class pointing to external data storage
+    def deref(self):
+        if self.type == 'azure_blob':
+            self.connection_str
+            pass
+        pass
+    
+    pass
 class data_ref:
     
     def __init__(self, db, collection, documentID = None):
@@ -23,8 +32,12 @@ class data_ref:
     def deref_data(self, **kwarg):
         mongoClient = resolve_mongo_client(**kwarg)
         data_pickled = (mongoClient[self.db][self.collection].find_one({"_id" : self.documentID}))
+        
         import pickle
-        return pickle.loads(data_pickled['data'])
+        unpickled_data = pickle.loads(data_pickled['data'])
+        if type(unpickled_data) is external_data_ref:
+            data = unpickled_data.deref()
+        return 
         
         pass
     def data_insert(self, data, **kwarg):
@@ -55,3 +68,4 @@ if __name__ == '__main__':
     print(my_data_ref.deref_data( connectionStr = None, mongoClient = connections.client))
     my_data_ref.delete_data(connectionStr = None, mongoClient = connections.client)
     pass
+
