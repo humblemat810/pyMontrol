@@ -12,12 +12,12 @@ from  all_decorate import for_all_methods, debug_decorater
 import connections
 import time , threading, datetime
 import pickle, pymongo
-logging.basicConfig(filename='controller.log', filemode='a', 
-                    format="%(asctime)s — %(name)s — %(levelname)s — %(funcName)s:%(lineno)d — %(message)s",
-                    level=logging.DEBUG,
-                    datefmt='%Y-%m-%d %H:%M:%S')
-logger = logging.getLogger(__file__)
-logger.info('baselogger set for controll.py')
+# logging.basicConfig(filename='controller.log', filemode='a', 
+#                     format="%(asctime)s — %(name)s — %(levelname)s — %(funcName)s:%(lineno)d — %(message)s",
+#                     level=logging.DEBUG,
+#                     datefmt='%Y-%m-%d %H:%M:%S')
+# logger = logging.getLogger(__file__)
+# logger.info('baselogger set for controll.py')
 class exit_code_class:
     kill_worker = 0
     fail = 1
@@ -98,7 +98,7 @@ class controller:
         pass
     def worker_listen(self,):
         worker_collection_name = self.worker_collection_name
-        logger.info("listening to " + 'worker' + worker_collection_name)
+        self.logger.info("listening to " + 'worker' + worker_collection_name)
         self.eventStream = self.client['worker'][worker_collection_name].watch()
         event_stream_pipeline = [{"$match" : 
                                   {'operationType' :
@@ -114,7 +114,7 @@ class controller:
             resume_token = connections.client['eventTrigger']['resume_token'].find_one()['value']
             # resume_token = bytes(resume_token, 'utf-8')
             self.dataStream = connections.client['eventTrigger']['data_packet_input'].watch(resume_after = resume_token)
-            logger.info('resume_after' + str(resume_token))
+            self.logger.info('resume_after' + str(resume_token))
         except:
             self.dataStream = connections.client['eventTrigger']['data_packet_input'].watch()
         self.available_worker_event_stream = connections.client['worker']['availableWorker'].watch()
@@ -152,7 +152,7 @@ class controller:
                     break
         
         worker_name = availableWorker['_id']
-        logger.info('worker assign '+ worker_name)
+        self.logger.info('worker assign '+ worker_name)
         # # ========need to be change to atomic operation
         # insert_result = mongoClient['worker'][worker_name].insert_one(fullDocument)
         # # mark fullDocument routed by moving
@@ -231,13 +231,13 @@ class controller:
         elif i['operationType'] == 'insert':
 
             self.routeDataStream(i['fullDocument'], connections.client)
-        logger.info('b4 resume token')
+        self.logger.info('b4 resume token')
         resume_token = i['_id']
         connections.client['eventTrigger']['resume_token'].replace_one({'_id': 'resume_token'}, 
                                                                        {'_id': 'resume_token', 'value': resume_token},
                                                                        upsert = True
                                                                        )
-        logger.info('after resume token')
+        self.logger.info('after resume token')
         pass
     def work(self):
         return self.manage_new_data_for_execution()
@@ -252,7 +252,7 @@ class controller:
         my_data_ref.data_insert(data = kill_command, connectionStr = None, mongoClient = connections.client)
         '''
         
-        logger.info('thread....')
+        self.logger.info('thread....')
         for i in self.eventStream:
             doc = i['fullDocument']
             data_unpickled = pickle.loads(doc ['data'])
@@ -279,7 +279,7 @@ class controller:
                 pass
             
             pass
-        logger.info('end thread')
+        self.logger.info('end thread')
         pass
         
     def manage_new_data_for_execution(self):
@@ -293,7 +293,7 @@ class controller:
         try:
             for i in self.dataStream:
                 event_cnt += 1
-                logger.info('event count' + str( event_cnt))
+                self.logger.info('event count' + str( event_cnt))
                 connections.client['log'] ['controller_log'].insert_one({'event count' : event_cnt, "utctime": datetime.datetime.utcnow()})
                 if i['operationType'] == 'insert':
                     pass
@@ -312,11 +312,11 @@ class controller:
                 # ok
                 pass
             else:
-                logger.info('err')
+                self.logger.info('err')
                 raise
             pass
         if self.being_kill:
-            logger.info('=========== being killed ==========manage_new_data_for_execution')
+            self.logger.info('=========== being killed ==========manage_new_data_for_execution')
             return exit_code.kill_worker
         # reach here if resume after is done
         
@@ -353,8 +353,10 @@ if __name__ == '__main__':
             formatter = logging.Formatter(FORMAT)
             fileh = logging.FileHandler('./' +worker_name + '.log', 'a')
             fileh.setFormatter(formatter)
+            logger.setLevel(logging.DEBUG)
             logger.addHandler(fileh) 
             logger.info('start')
+            my_worker.logger = logger
             my_worker.worker_listen()
             if result is None:
                 raise(Exception('abnormal register exit'))

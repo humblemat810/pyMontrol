@@ -42,7 +42,7 @@ def send_data_by_thread2(data):
     my_data_ref.documentID = data_ref_insert_result.inserted_id
     pass
 use_thread = True
-for i in range(1):
+for i in range(10):
     if use_thread:
         from copy import deepcopy
         x = threading.Thread(target = send_data_by_thread, args = (deepcopy(data),))
