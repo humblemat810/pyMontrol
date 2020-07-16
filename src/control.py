@@ -1,10 +1,19 @@
-import logging, pathlib, yaml
+import logging, pathlib, yaml, controller_command
 logging.basicConfig(filename='./control.log', filemode='a', format='%(name)s - %(levelname)s - %(message)s', level=logging.DEBUG)
 with open(str(pathlib.Path(r'./control_config.yaml')), 'r') as file:
     control_config = yaml.safe_load(file)
 from  all_decorate import for_all_methods, debug_decorater
 import connections
 import time , threading
+import pickle, pymongo
+
+
+class exit_code_class:
+    kill_worker = 0
+    fail = 1
+    break_current_and_continue = 2
+    success = 3
+exit_code = exit_code_class()
 @for_all_methods(debug_decorater)
 class controller:
     def atomic_auto_assign_new_data(self, new_doc, mongoClient):
@@ -22,9 +31,42 @@ class controller:
         
         
         pass
+    def worker_register(self, worker_collection_name = None, registration_collection = 'availableController'):
+        self.worker_collection_name = worker_collection_name
+        self.registration_collection = registration_collection
+        try: 
+            insert_result  = self.client['worker'][registration_collection].insert_one({'_id' : worker_collection_name, 
+                                                             'free-since' : int(time.time()),
+                                                             'alive' : True
+                                                             })
+        except pymongo.errors.DuplicateKeyError as e:
+            print('worker registered, try next, future will implement to test if that worker is dead and resume its role')
+            return (exit_code.fail, e)
+            
+        self.eventStream = self.client['worker'][worker_collection_name].watch()
+        event_stream_pipeline = [{"$match" : 
+                                  {'operationType' :
+                                   {"$in" : 
+                                    ['insert', 'delete']
+                                    }
+                                   }
+                                  }]
+        event_stream_pipeline = []
+        
+        
+        try:
+            resume_token = connections.client['eventTrigger']['resume_token'].find_one()['value']
+            # resume_token = bytes(resume_token, 'utf-8')
+            self.dataStream = connections.client['eventTrigger']['data_packet_input'].watch(resume_after = resume_token)
+            print('resume_after' , resume_token)
+        except:
+            self.dataStream = connections.client['eventTrigger']['data_packet_input'].watch()
+        self.available_worker_event_stream = connections.client['worker']['availableWorker'].watch()
+        # self.dataStream = 
+        return exit_code.success, None
+        pass
     
-    
-    def pop_free_worker(self, mongoClient):
+    def pop_free_worker(self, mongoClient, worker_colection  = "availableWorker"):
         
         availableWorker = mongoClient['worker']['availableWorker'].find_one_and_delete({})
         
@@ -32,14 +74,16 @@ class controller:
         pass
     
     
-    def routeEventStream(self,fullDocument, mongoClient):
+    def routeDataStream(self,fullDocument, mongoClient):
         # to be abstracted by using other load balancing algorithms====
         availableWorker = self.pop_free_worker(mongoClient)
         #===========
         worker_found = availableWorker is not None
         while not worker_found:
             logging_info = 'no free worker found'
-            connections.client['log'] ['controller_log'].insert_one({'info' : logging_info})
+            connections.client['log'] ['controller_log'].insert_one({'info' : logging_info, 
+                                                                     "utctime": datetime.datetime.utcnow()}
+                                                                    )
             # print(logging_info)
             for i in self.available_worker_event_stream:
                 if i['operationType'] == 'insert':
@@ -64,21 +108,9 @@ class controller:
         pass
     
     def __init__(self):
-        event_stream_pipeline = [{"$match" : 
-                                  {'operationType' :
-                                   {"$in" : 
-                                    ['insert', 'delete']
-                                    }
-                                   }
-                                  }]
-        event_stream_pipeline = []
-        try:
-            resume_token = connections.client['eventTrigger']['resume_token'].find_one()['value']
-            # resume_token = bytes(resume_token, 'utf-8')
-            self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch(resume_after = resume_token)
-        except:
-            self.eventStream = connections.client['eventTrigger']['data_packet_input'].watch()
-        self.available_worker_event_stream = connections.client['worker']['availableWorker'].watch()
+        self.being_kill = False
+        import connections
+        self.client = connections.client
         pass
     @staticmethod
     def assert_worker_exist(worker_name):
@@ -120,7 +152,8 @@ class controller:
     def kill_controller(self, controller_ref):
         
         pass
-    def process_eventStream(self, i):
+
+    def process_dataStream(self, i):
         # print(i)
         if 'command' in i:
             if i['command'] == 'break':
@@ -132,7 +165,8 @@ class controller:
                 pass
         
         elif i['operationType'] == 'insert':
-            self.routeEventStream(i['fullDocument'], connections.client)
+
+            self.routeDataStream(i['fullDocument'], connections.client)
         
         resume_token = i['_id']
         connections.client['eventTrigger']['resume_token'].replace_one({'_id': 'resume_token'}, 
@@ -140,9 +174,13 @@ class controller:
                                                                        upsert = True
                                                                        )
         pass
+    def work(self):
+        return self.manage_new_data_for_execution()
+        pass
     def manage_new_data_for_execution(self):
         event_cnt = 0
-        for i in self.eventStream:
+        
+        for i in self.dataStream:
             event_cnt += 1
             # print('event count', event_cnt)
             connections.client['log'] ['controller_log'].insert_one({'event count' : event_cnt})
@@ -152,11 +190,61 @@ class controller:
                 continue
             from copy import deepcopy
             # time.sleep(1)
-            x = threading.Thread(target = self.process_eventStream, args = (deepcopy(i),))
+            x = threading.Thread(target = self.process_dataStream, args = (deepcopy(i),))
             x.start()
+        if self.being_kill:
+            return exit_code.kill_worker
+        # reach here if resume after is done
+        
 # so far single controller supported
+# if __name__ == '__main__':
+#     my_controller = controller()
+#     my_controller.worker_register()
+#     my_controller.manage_new_data_for_execution()
+#     pass
+
 if __name__ == '__main__':
-    my_controller = controller()
+    import control as ct
+    # import data_ref as dr
+    my_worker = controller()
     
-    my_controller.manage_new_data_for_execution()
+    worker_name_prefix = 'test_controller'
+    num = 0
+    fail_cnt = 0
+    
+    while fail_cnt < 10:
+        try:
+            worker_name = worker_name_prefix  + str(num)
+            logging.basicConfig(filename='./' + worker_name + '.log', filemode='a', format='%(name)s - %(levelname)s - %(message)s', level=logging.DEBUG)
+            result = my_worker.worker_register(worker_collection_name = worker_name)
+            if result is None:
+                raise(Exception('abnormal register exit'))
+            result_code, success_or_err = result
+            if result_code == exit_code.fail:
+                if type(success_or_err) is pymongo.errors.DuplicateKeyError:
+                    raise(success_or_err)
+                pass
+            else:
+                print('worker registered as ', worker_name)
+                worker_exit_code = my_worker.work()
+                if worker_exit_code == exit_code.kill_worker:
+                    break
+                else:
+                    fail_cnt = 0
+                if worker_exit_code == exit_code.break_current_and_continue:
+                    continue
+                # connections.client['log'] ['controller_log'].insert_one({'event count' : event_cnt})
+                print('this line should show up once when the controller start up with resume after enabled, when the resume after queue is emptied')
+            
+        except:
+            # raise
+            fail_cnt +=1
+            num+=1
+    
+    # import threading
+    
+    
+    # x = threading.Thread(target=my_worker.work)
+    # x.start()
+    
     pass

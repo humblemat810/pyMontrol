@@ -17,9 +17,10 @@ class worker:
         import connections
         self.client = connections.client
         pass
-    def worker_register(self, worker_collection_name = None):
+    def worker_register(self, worker_collection_name = None,registration_collection = 'availableWorker'):
         self.worker_collection_name = worker_collection_name
-        insert_result  = self.client['worker']['availableWorker'].insert_one({'_id' : worker_collection_name, 
+        self.registration_collection = registration_collection
+        insert_result  = self.client['worker'][registration_collection].insert_one({'_id' : worker_collection_name, 
                                                              'free-since' : int(time.time()),
                                                              'alive' : True
                                                              })
@@ -98,7 +99,7 @@ class worker:
         from queue import Queue
         max_Queue_cnt = 10
         qcnt = 0
-        q = Queue()
+        # q = Queue()
         for doc in self.client['worker'][self.worker_collection_name].find():
             self.process_doc(doc)
         for i in self.eventStream:
@@ -118,7 +119,7 @@ class worker:
             if use_thread:
                 x = threading.Thread(target=self.process_eventStream, args=(j,))
                 x.start()
-                q.put(x)
+                # q.put(x)
                 
             else:
                 self.process_eventStream(j)
