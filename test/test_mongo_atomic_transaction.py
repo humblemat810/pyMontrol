@@ -75,7 +75,7 @@ session=  mongoClient.start_session()
 session.start_transaction(read_concern=ReadConcern('local'),
                           write_concern=wc_majority)
 # logging_info = 'packet id' + str(doc['_id']) + ' assigned to worker ' + str(worker_name)
-collection_from.delete_one({'_id' : doc['_id']}, session=session)
+found_data = collection_from.find_one_and_delete({'_id' : doc['_id']}, session=session)
 collection_to.replace_one({'_id' : doc['_id']}, 
                                        replacement_doc , upsert = True, session = session)
 # mongoClient['worker']['test_worker0'].insert_one(replacement_doc, session = session, upsert = True)

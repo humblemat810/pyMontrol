@@ -30,8 +30,11 @@ import connections
 # my_data_ref.data_insert(data = kill_command, connectionStr = None, mongoClient = connections.client)
 
 from control import controller 
+commnader = controller()
+commnader.name = 'commander'
+commnader.get_worker_health(worker_name = 'test_worker0')
 # controller.worker_reload('test_worker0')
-controller.kill_worker('test_worker0')
-controller.kill_worker('test_worker1')
-controller.kill_worker('test_worker2')
+# controller.kill_worker('test_worker0')
+# controller.kill_worker('test_worker1')
+# controller.kill_worker('test_worker2')
 # controller.kill_worker('test_worker6')

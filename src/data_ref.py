@@ -37,7 +37,9 @@ class data_ref:
         unpickled_data = pickle.loads(data_pickled['data'])
         if type(unpickled_data) is external_data_ref:
             data = unpickled_data.deref()
-        return 
+        else :
+            data = unpickled_data
+        return  data
         
         pass
     def data_insert(self, data, **kwarg):
@@ -46,8 +48,10 @@ class data_ref:
             raise(ValueError('wrong db or collection or documentID'))
             pass
         import pickle
+        from datetime import datetime
         pickled_data = pickle.dumps(data)
-        return(mongoClient[self.db][self.collection].insert_one({'data' : pickled_data}))
+        
+        return(mongoClient[self.db][self.collection].insert_one({'data' : pickled_data, 'insertion_datetime' : datetime.now()}))
         pass
     
     def delete_data(self, **kwarg):

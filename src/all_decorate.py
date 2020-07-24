@@ -8,10 +8,12 @@ import yaml, pathlib
 with open(str(pathlib.Path(r'./control_config.yaml')), 'r') as file:
     control_config = yaml.safe_load(file)
 strict_mode = False
+import functools
 import logging
 if 'strict_mode' in control_config:
     strict_mode = control_config['strict_mode']
 def debug_decorater( to_decorate):
+    @functools.wraps(to_decorate)
     def func_to_decorate(*arg, **kwarg):
         try:
             return(to_decorate(*arg, **kwarg))

@@ -1,3 +1,6 @@
+worker_db = 'pc_worker'
+
+
 import logging, pathlib, yaml, controller_command
 logger = None
 with open(str(pathlib.Path(r'./control_config.yaml')), 'r') as file:
@@ -28,7 +31,7 @@ exit_code = exit_code_class()
 @for_all_methods(debug_decorater)
 class controller:
     # def atomic_auto_assign_new_data(self, new_doc, mongoClient):
-        
+    name : str
     #     pass
     def controller_register(self, controller_collection_name):
         # lower priority, as one controller should already be able to afford huge loads, not tested
@@ -56,36 +59,30 @@ class controller:
         collection_from = mongoClient[db_from][col_from]
         collection_to= mongoClient[db_to][col_to]
         session=  mongoClient.start_session()
+        logging_info = 'packet id' + str(doc['_id']) + ' assigned to worker ' + str(worker_name)
+        logging.info(logging_info + ' start')
         session.start_transaction(read_concern=ReadConcern('local'),
                                   write_concern=wc_majority)
         logging_info = 'packet id' + str(doc['_id']) + ' assigned to worker ' + str(worker_name)
         # Important:: You must pass the session to the operations.
-        collection_from.delete_one({'_id' : doc['_id']}, session=session)
-        # mongoClient['worker']['test_worker0'].insert_one({ 'as':pickle.dumps(np.arange(200))}, session = session)
-        # mongoClient['worker']['test_worker0'].update_one({'data' : doc['data']}, upesert = True, session = session)
+        collection_from.find_one_and_delete({'_id' : doc['_id']}, session=session)
         collection_to.replace_one({'_id' : doc['_id']}, doc , upsert = True, session = session)
-        # mongoClient['worker']['test_worker0'].insert_one({'aa' : 1}, session = session)
-        # collection_to.insert_one(doc, session=session)
         mongoClient['log'] ['controller_log'].insert_one({'info' : logging_info, "utctime": datetime.datetime.utcnow()}, session = session)
         session.commit_transaction()
         session.end_session()
-        # session.with_transaction(
-        # callback, 
-        # read_concern=ReadConcern('local'),
-        # write_concern=wc_majority,
-        # read_preference=ReadPreference.PRIMARY)
+        logging.info(logging_info + ' end')
         
         pass
     def worker_register(self, worker_collection_name = None, registration_collection = 'availableController'):
         self.worker_collection_name = worker_collection_name
         self.name = worker_collection_name
         self.registration_collection = registration_collection
-        if worker_collection_name not in self.client['worker'].list_collection_names():
-            self.client['worker'][worker_collection_name].insert_one({'tag':'beginning'})
+        if worker_collection_name not in self.client[worker_db].list_collection_names():
+            self.client[worker_db][worker_collection_name].insert_one({'tag':'beginning'})
             
             time.sleep(0.5)
         try: 
-            insert_result  = self.client['worker'][registration_collection].insert_one({'_id' : worker_collection_name, 
+            insert_result  = self.client[worker_db][registration_collection].insert_one({'_id' : worker_collection_name, 
                                                              'free-since' : int(time.time()),
                                                              'alive' : True
                                                              })
@@ -98,8 +95,8 @@ class controller:
         pass
     def worker_listen(self,):
         worker_collection_name = self.worker_collection_name
-        self.logger.info("listening to " + 'worker' + worker_collection_name)
-        self.eventStream = self.client['worker'][worker_collection_name].watch()
+        self.logger.info("listening to " + worker_db + worker_collection_name)
+        self.eventStream = self.client[worker_db][worker_collection_name].watch()
         event_stream_pipeline = [{"$match" : 
                                   {'operationType' :
                                    {"$in" : 
@@ -117,12 +114,12 @@ class controller:
             self.logger.info('resume_after' + str(resume_token))
         except:
             self.dataStream = connections.client['eventTrigger']['data_packet_input'].watch()
-        self.available_worker_event_stream = connections.client['worker']['availableWorker'].watch()
+        self.available_worker_event_stream = connections.client[worker_db]['availableWorker'].watch()
         pass
     def pop_free_worker(self, mongoClient, worker_colection  = "availableWorker"):
         
-        # availableWorker = mongoClient['worker']['availableWorker'].find_one_and_delete({})
-        availableWorker = mongoClient['worker']['availableWorker'].find_one({})
+        # availableWorker = mongoClient[worker_db]['availableWorker'].find_one_and_delete({})
+        availableWorker = mongoClient[worker_db]['availableWorker'].find_one({})
         return(availableWorker)
         pass
     
@@ -147,22 +144,16 @@ class controller:
                     # logger.info(logging_info)
                     if availableWorker is not None:
                         worker_found = True
-                        logging_info = 'found free worker ' + worker_name
+                        logging_info = 'found free worker ' + availableWorker
                         connections.client['log'] ['controller_log'].insert_one({'info' : logging_info, "utctime": datetime.datetime.utcnow()})
                     break
         
         worker_name = availableWorker['_id']
         self.logger.info('worker assign '+ worker_name)
-        # # ========need to be change to atomic operation
-        # insert_result = mongoClient['worker'][worker_name].insert_one(fullDocument)
-        # # mark fullDocument routed by moving
-        # logging_info = 'packet id' + str(fullDocument['_id']) + ' assigned to worker ' + str(worker_name)
-        # connections.client['log'] ['controller_log'].insert_one({'info' : logging_info})
-        # #========= atomic finish
-        # logger.info(logging_info )
+
         db_from = 'eventTrigger'
         col_from = 'data_packet_input'
-        db_to = 'worker'
+        db_to = worker_db
         col_to = worker_name
         self.atomic_assign_data(fullDocument,mongoClient, db_from, col_from, db_to, col_to)
         
@@ -177,11 +168,11 @@ class controller:
         pass
     @staticmethod
     def assert_worker_exist(worker_name):
-        if not worker_name.startswith('test_worker') and not worker_name.startswith('worker'):
+        if not worker_name.startswith('test_worker') and not worker_name.startswith(worker_db):
             raise(ValueError('bad collection name : '+ worker_name))
             pass
-        if (not(worker_name  in  connections.client['worker'].list_collection_names())
-            and  connections.client['worker']['availableWorker'].find_one({'_id' : worker_name}) is None):
+        if (not(worker_name  in  connections.client[worker_db].list_collection_names())
+            and  connections.client[worker_db]['availableWorker'].find_one({'_id' : worker_name}) is None):
             raise(ValueError('collection name not in worker collections'))
             pass
         pass
@@ -190,22 +181,32 @@ class controller:
         controller.assert_worker_exist(worker_name)
         import worker_command
         import data_ref as dr
-        kill_command =worker_command.worker_command('kill')
-        my_data_ref = dr.data_ref(db = 'worker', collection = worker_name)
-        my_data_ref.data_insert(data = kill_command, connectionStr = None, mongoClient = connections.client)
+        # kill_command =worker_command.worker_command('kill')
+        my_data_ref = dr.data_ref(db = worker_db, collection = worker_name)
+        my_data_ref.data_insert(data = worker_command.command_kill_worker(worker_name = worker_name), connectionStr = None, mongoClient = connections.client)
         pass
+    
+    def get_worker_health(self,worker_name):
+        import worker_command
+        import data_ref as dr
+        controller.assert_worker_exist(worker_name)
+        get_health_command = worker_command.command_report_health(worker_name, self.name)
+        my_data_ref = dr.data_ref(db = worker_db, collection = worker_name)
+        my_data_ref.data_insert(get_health_command, mongoClient = connections.client)
+        pass
+    
     @staticmethod
     def worker_reload(worker_name):
         controller.assert_worker_exist(worker_name)
         import worker_command
         import data_ref as dr
         reload_code_command =worker_command.worker_command('reload_code')
-        my_data_ref = dr.data_ref(db = 'worker', collection = worker_name)
+        my_data_ref = dr.data_ref(db = worker_db, collection = worker_name)
         my_data_ref.data_insert(data = reload_code_command, connectionStr = None, mongoClient = connections.client)
         pass
     def worker_managerment(self,mongoClient):
         # kill or wake up sleeping worker
-        c = mongoClient['worker']['availableWorker'].find()
+        c = mongoClient[worker_db]['availableWorker'].find()
         for worker in c:
             if int(time.time()) - worker['free-since'] > control_config['worker_time_out']:
                 self.kill_worker(worker['_id'])
@@ -213,7 +214,7 @@ class controller:
             pass
         pass    
     def kill_controller(self, controller_ref):
-        
+        raise NotImplementedError
         pass
 
     def process_dataStream(self, i):
@@ -248,7 +249,7 @@ class controller:
         import data_ref as dr
         controller_to_kill = 'test_controller0'
         kill_command = controller_command.controller_command('kill')
-        my_data_ref = dr.data_ref(db = 'worker', collection = controller_to_kill)
+        my_data_ref = dr.data_ref(db = worker_db, collection = controller_to_kill)
         my_data_ref.data_insert(data = kill_command, connectionStr = None, mongoClient = connections.client)
         '''
         
@@ -273,7 +274,7 @@ class controller:
                     self.dataStream.close()
                     logger.info('closing event stream')
                     self.eventStream.close()
-                    self.client['worker'][self.registration_collection].delete_one({'_id' : self.worker_collection_name})
+                    self.client[worker_db][self.registration_collection].delete_one({'_id' : self.worker_collection_name})
                     
                     break
                 pass
@@ -281,7 +282,7 @@ class controller:
             pass
         self.logger.info('end thread')
         pass
-        
+
     def manage_new_data_for_execution(self):
         event_cnt = 0
         import threading
