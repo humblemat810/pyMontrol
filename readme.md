@@ -37,6 +37,10 @@ figure2 run both worker and controller and they start working
 figure3 example implementation of data without using the local control
 If you would like to use the local control, use the commented code and edit the function main_control_loop
 
+![TT](<img/compassView.png>)
+Open mongodb compass and see the worker and controllers are working
+
+
 Enjoy control with pure python without using Flask
 
  TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT    TTTTTT
