@@ -20,10 +20,24 @@ Issues:
 Very litter is done to worker monitor
 
 
+Detailed Tutorial:
 
+![TT](<img/logo.png>)
+figure 1  Settings for /credential/mongo.json
+This library make use of the event stream to achieve control. So in mongodb a replicaset is required.
+As seen in figure 1, the mongodb need a connection string to be connected to the mongodb server.
 
+After configuration, we just need to run control.py and worker.py to get it work.
+However, what to do with the data is up to your own implementation althought a sample local control is partially implemented
 
+![TT](<img/run_controller_and_worker.png>)
+figure2 run both worker and controller and they start working
 
+![TT](<img/example_process_data.png>)
+figure3 example implementation of data without using the local control
+If you would like to use the local control, use the commented code and edit the function main_control_loop
+
+Enjoy control with pure python without using Flask
 
  TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT    TTTTTT
  TTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTTT     TTTTT
