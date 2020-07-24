@@ -22,7 +22,7 @@ Very litter is done to worker monitor
 
 Detailed Tutorial:
 
-![TT](<img/logo.png>)
+![TT](<img/mongo_json_settings.png>)
 figure 1  Settings for /credential/mongo.json
 This library make use of the event stream to achieve control. So in mongodb a replicaset is required.
 As seen in figure 1, the mongodb need a connection string to be connected to the mongodb server.
