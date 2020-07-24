@@ -72,9 +72,11 @@ class worker:
         if 'kill' in command.command_json:
             logging_info = 'killing worker ' + str(self.worker_collection_name) +' by worker_command.worker_command'
             self.logger.info(logging_info)
-            self.client[worker_db][self.worker_collection_name].drop()
             self.client[worker_db]['availableWorker'].remove({'_id': self.worker_collection_name})
             self.vomit_job_back_to_queue()
+            self.client[worker_db][self.worker_collection_name].drop()
+            
+            
             print(logging_info)
             self.being_kill = True
             self.eventStream.close()
@@ -102,6 +104,7 @@ class worker:
         stage = { "$merge": { "into": { "db":"eventTrigger", "coll":"data_packet_input" }, "on": "_id", "whenMatched": "keepExisting", "whenNotMatched": "insert" } }
         pipeline.append(stage)
         self.client[worker_db][self.name].aggregate(pipeline)
+        
         pass
     def process_doc(self, doc):
         if 'data' not in doc:
