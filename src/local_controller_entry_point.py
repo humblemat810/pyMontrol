@@ -2,6 +2,11 @@ def main_control_loop(q):
     from local_data_controller_helper import (spawn_child, process, 
                                               collect_parent_data, store_data_to_map)
     # q.put(data['current_node_name'])
+    # process commands in topological order according to the workflow specified in data['dag']
+    # data['data'], the data to be processed
+    # data['dag']  a dag object consist of workflow to be applied to the data, 
+    # and possibly including the settings in the option in that certain blocks
+    # 
     while not q.empty():
         current_node_name = q.get()
         data = collect_parent_data(current_node_name)
