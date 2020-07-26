@@ -122,9 +122,44 @@ class controller:
         availableWorker = mongoClient[worker_db]['availableWorker'].find_one({})
         return(availableWorker)
         pass
+    check_worker_on = True
+    def interval_check_worker_availability(self, interval = 20):
+        while(self.check_worker_on):
+            self.find_and_remove_all_MIA_worker_availability()
+            # t = Thread(target = self.find_and_remove_all_MIA_worker_availability)
+            # t.start()
+            time.sleep(interval)
+        pass
+    def find_and_remove_all_MIA_worker_availability(self):
+        # if a worker missing in action, remove that worker from collection jobboard
+        # print('find and remove fake worker')
+        worker_cursor = self.client[worker_db]['availableWorker'].find({})
+        for worker_record in worker_cursor:
+            worker_name = worker_record['_id']
+            # self.find_and_remove_MIA_worker_availability(worker_name)
+            # print('found worker', worker_name)
+            from threading import Thread
+            t = Thread(target = self.find_and_remove_MIA_worker_availability, args = (worker_name,))
+            t.start()
+        # print('all worker checked')
+        pass
+
     
+    def find_and_remove_MIA_worker_availability(self, worker_name):
+        # if a worker missing in action, remove that worker from collection jobboard
+        # print('heartbeating', worker_name)
+        self.get_worker_health(worker_name)
+        import time
+        time.sleep(5)
+        record = self.client[worker_db] [self.name].find_one_and_delete({'sender' : worker_name})
+        if record is None:
+            # kill_worker
+            self.client[worker_db]['availableWorker'].delete_many({"_id": worker_name} )
+            pass
+        pass
     
     def routeDataStream(self,fullDocument, mongoClient):
+        
         # to be abstracted by using other load balancing algorithms====
         availableWorker = self.pop_free_worker(mongoClient)
         #===========
@@ -341,6 +376,10 @@ if __name__ == '__main__':
         try:
             worker_name = worker_name_prefix  + str(num)
             result = my_worker.worker_register(worker_collection_name = worker_name)
+            from threading import Thread
+            # my_worker.interval_check_worker_availability()
+            t = Thread(target = my_worker.interval_check_worker_availability)
+            t.start()
             log_f_name = str(pathlib.Path( worker_name + '.log'))
             
             import os
@@ -379,6 +418,7 @@ if __name__ == '__main__':
                 logger.info('this line should show up once when the controller start up with resume after enabled, when the resume after queue is emptied')
             
         except:
+            my_worker.check_worker_on = False
             if strict_mode:
                 raise
             fail_cnt +=1

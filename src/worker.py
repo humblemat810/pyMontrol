@@ -167,6 +167,12 @@ class worker:
         max_Queue_cnt = 10
         qcnt = 0
         # q = Queue()
+        
+        # y = threading.Thread(target = self.to_be_threaded_to_handle_controller_command)
+        # y.start()
+        
+        
+        
         for doc in self.client[worker_db][self.worker_collection_name].find({'tag' : None}):
             self.process_doc(doc)
         try:
