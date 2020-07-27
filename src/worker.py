@@ -261,6 +261,7 @@ if __name__ == '__main__':
             print(logging_info)
             logger.info(logging_info)
             my_worker.logger = logger
+            my_worker.worker_listen()
             worker_exit_code = my_worker.work()
             if worker_exit_code == exit_code.kill_worker:
                 break
