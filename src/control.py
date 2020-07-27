@@ -133,11 +133,7 @@ class controller:
             t.start()
         # print('all worker checked')
         pass
-
-    
-    def find_and_remove_MIA_worker_availability(self, worker_name):
-        # if a worker missing in action, remove that worker from collection jobboard
-        # print('heartbeating', worker_name)
+    def find_and_remove_MIA(self, worker_name, register_collection_name = 'availableWorker'):
         self.get_worker_health(worker_name)
         import time
         time.sleep(5)
@@ -151,13 +147,24 @@ class controller:
         record = self.client[worker_db] [self.name].find_one_and_delete({'data.sender' : worker_name})
         if record is None:
             # kill_worker
-            self.client[worker_db]['availableWorker'].delete_many({"_id": worker_name} )
+            self.client[worker_db][register_collection_name].delete_many({"_id": worker_name} )
             pass
         else:
             self.client['log']['health_history'].insert_one(record)
         session.commit_transaction()
         session.end_session()
-        logging.info('removed worker' + worker_name + 'from availableWorker')
+        logging.info('removed worker' + worker_name + 'from ' +register_collection_name)
+        pass
+    def find_and_remove_MIA_controller_availability(self, worker_name):
+        # if a worker missing in action, remove that worker from collection jobboard
+        # print('heartbeating', worker_name)
+        self.find_and_remove_MIA(worker_name, 'availableController')
+        pass
+    
+    def find_and_remove_MIA_worker_availability(self, worker_name):
+        # if a worker missing in action, remove that worker from collection jobboard
+        # print('heartbeating', worker_name)
+        self.find_and_remove_MIA(worker_name)
         pass
     
     def routeDataStream(self,fullDocument, mongoClient):
@@ -424,6 +431,7 @@ if __name__ == '__main__':
         try:
             worker_name = worker_name_prefix  + str(num)
             # TO_DO, check if that controller exist and kill if neccessary
+            my_worker.find_and_remove_MIA_worker_availability(worker_name)
             result = my_worker.worker_register(worker_collection_name = worker_name)
             
             log_f_name = str(pathlib.Path( worker_name + '.log'))
