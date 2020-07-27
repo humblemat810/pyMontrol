@@ -179,7 +179,8 @@ class worker:
             
         import time
         # time.sleep(1)
-        qcnt+=1
+        self.qcnt+=1
+        qcnt = self.qcnt
         global process_id
         try:
             assert j["_id"]['_data'] not in process_id
@@ -203,7 +204,7 @@ class worker:
     def work(self):
         from queue import Queue
         max_Queue_cnt = 10
-        qcnt = 0
+        self.qcnt = 0
         # q = Queue()
         
         # y = threading.Thread(target = self.command_handler_threadable)
