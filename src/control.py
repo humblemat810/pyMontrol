@@ -26,15 +26,13 @@ class exit_code_class:
     break_current_and_continue = 2
     success = 3
 exit_code = exit_code_class()
-
+from _base_worker import base_worker
 # @for_all_methods(debug_decorater)
-class controller:
+class controller(base_worker):
     # def atomic_auto_assign_new_data(self, new_doc, mongoClient):
     name : str
     #     pass
-    def controller_register(self, controller_collection_name):
-        # lower priority, as one controller should already be able to afford huge loads, not tested
-        pass
+
     def atomic_assign_data(self, doc, mongoClient, db_from , col_from ,db_to,  col_to):
         from pymongo.read_concern import ReadConcern
         from pymongo.write_concern import WriteConcern
@@ -62,27 +60,7 @@ class controller:
         logging.info(logging_info + ' end')
         
         pass
-    def worker_register(self, worker_collection_name = None, registration_collection = 'availableController'):
-        assert not (worker_collection_name  in [i["_id"]for i in self.client[worker_db]['availableController'].find()])
-        self.worker_collection_name = worker_collection_name
-        self.name = worker_collection_name
-        self.registration_collection = registration_collection
-        if worker_collection_name not in self.client[worker_db].list_collection_names():
-            self.client[worker_db][worker_collection_name].insert_one({'tag':'beginning'})
-            
-            time.sleep(0.5)
-        try: 
-            insert_result  = self.client[worker_db][registration_collection].insert_one({'_id' : worker_collection_name, 
-                                                             'free-since' : int(time.time()),
-                                                             'alive' : True
-                                                             })
-        except pymongo.errors.DuplicateKeyError as e:
-            # logger.info('worker registered, try next, future will implement to test if that worker is dead and resume its role')
-            return (exit_code.fail, e)
-        
-        # self.dataStream = 
-        return exit_code.success, None
-        pass
+
     def worker_listen(self,):
         worker_collection_name = self.worker_collection_name
         self.logger.info("listening to " + worker_db + worker_collection_name)
@@ -123,14 +101,15 @@ class controller:
     def find_and_remove_all_MIA_worker_availability(self):
         # if a worker missing in action, remove that worker from collection jobboard
         # print('find and remove fake worker')
-        worker_cursor = self.client[worker_db]['availableWorker'].find({})
-        for worker_record in worker_cursor:
-            worker_name = worker_record['_id']
-            # self.find_and_remove_MIA_worker_availability(worker_name)
-            # print('found worker', worker_name)
-            from threading import Thread
-            t = Thread(target = self.find_and_remove_MIA_worker_availability, args = (worker_name,))
-            t.start()
+        for workerBoardCollection in ['availableWorker', 'availableController']:
+            worker_cursor = self.client[worker_db][workerBoardCollection].find({})
+            for worker_record in worker_cursor:
+                worker_name = worker_record['_id']
+                # self.find_and_remove_MIA_worker_availability(worker_name)
+                # print('found worker', worker_name)
+                from threading import Thread
+                t = Thread(target = self.find_and_remove_MIA_worker_availability, args = (worker_name,))
+                t.start()
         # print('all worker checked')
         pass
     def find_and_remove_MIA(self, worker_name, register_collection_name = 'availableWorker'):
@@ -203,34 +182,40 @@ class controller:
         pass
     
     def __init__(self):
+        self.worker_db = worker_db
         self.being_kill = False
         import connections
         self.client = connections.client
         pass
     @staticmethod
-    def assert_worker_exist(worker_name):
-        if not worker_name.startswith('test_worker') and not worker_name.startswith(worker_db):
-            raise(ValueError('bad collection name : '+ worker_name))
+    def worker_exist(worker_name):
+        if not worker_name.startswith('test_controller') and not worker_name.startswith('test_worker') and not worker_name.startswith(worker_db):
+            return False
+            # raise(ValueError('bad collection name : '+ worker_name))
             pass
         if (not(worker_name  in  connections.client[worker_db].list_collection_names())
             and  connections.client[worker_db]['availableWorker'].find_one({'_id' : worker_name}) is None):
-            raise(ValueError('collection name not in worker collections'))
+            return False
+            # raise(ValueError('collection name not in worker collections'))
             pass
+        return True
         pass
     @staticmethod
     def kill_worker(worker_name):
-        controller.assert_worker_exist(worker_name)
-        import worker_command
-        import data_ref as dr
-        # kill_command =worker_command.worker_command('kill')
-        my_data_ref = dr.data_ref(db = worker_db, collection = worker_name)
-        my_data_ref.data_insert(data = worker_command.command_kill_worker(worker_name = worker_name), connectionStr = None, mongoClient = connections.client)
+        if controller.worker_exist(worker_name):
+            controller.worker_exist(worker_name)
+            import worker_command
+            import data_ref as dr
+            # kill_command =worker_command.worker_command('kill')
+            my_data_ref = dr.data_ref(db = worker_db, collection = worker_name)
+            my_data_ref.data_insert(data = worker_command.command_kill_worker(worker_name = worker_name), connectionStr = None, mongoClient = connections.client)
         pass
     
     def get_worker_health(self,worker_name):
+        # if controller.worker_exist(worker_name):
         import worker_command
         import data_ref as dr
-        controller.assert_worker_exist(worker_name)
+        # controller.worker_exist(worker_name)
         get_health_command = worker_command.command_report_health(worker_name, self.name)
         my_data_ref = dr.data_ref(db = worker_db, collection = worker_name)
         my_data_ref.data_insert(get_health_command, mongoClient = connections.client)
@@ -238,12 +223,12 @@ class controller:
     
     @staticmethod
     def worker_reload(worker_name):
-        controller.assert_worker_exist(worker_name)
-        import worker_command
-        import data_ref as dr
-        reload_code_command =worker_command.worker_command('reload_code')
-        my_data_ref = dr.data_ref(db = worker_db, collection = worker_name)
-        my_data_ref.data_insert(data = reload_code_command, connectionStr = None, mongoClient = connections.client)
+        if controller.worker_exist(worker_name):
+            import worker_command
+            import data_ref as dr
+            reload_code_command =worker_command.worker_command('reload_code')
+            my_data_ref = dr.data_ref(db = worker_db, collection = worker_name)
+            my_data_ref.data_insert(data = reload_code_command, connectionStr = None, mongoClient = connections.client)
         pass
     def worker_managerment(self,mongoClient):
         # kill or wake up sleeping worker
@@ -408,6 +393,7 @@ class controller:
                         if self.command['kill'] == self.worker_collection_name:
                             logger.info('kill_command_received')
                             self.being_kill = True
+            record = self.client[worker_db] [self.name].find_one_and_delete({'_id' : doc['_id']})
         
 
         
@@ -431,7 +417,8 @@ if __name__ == '__main__':
         try:
             worker_name = worker_name_prefix  + str(num)
             # TO_DO, check if that controller exist and kill if neccessary
-            my_worker.find_and_remove_MIA_worker_availability(worker_name)
+            my_worker.name = 'temp'
+            my_worker.find_and_remove_MIA_controller_availability(worker_name)
             result = my_worker.worker_register(worker_collection_name = worker_name)
             
             log_f_name = str(pathlib.Path( worker_name + '.log'))

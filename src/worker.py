@@ -22,27 +22,19 @@ process_id = set()
 with open(str(pathlib.Path(r'./config.yaml')), 'r') as file:
     config = yaml.safe_load(file)    
 worker_db = config['worker_db']
-class worker:
+from _base_worker import base_worker
+
+class worker(base_worker):
     
     def __init__(self):
+        self.worker_db = worker_db
         self.being_kill = False
         import connections
         self.client = connections.client
         pass
-    def worker_register(self, worker_collection_name = None,registration_collection = 'availableWorker'):
-        self.worker_collection_name = worker_collection_name
-        self.name = worker_collection_name
-        self.registration_collection = registration_collection
-        insert_result  = self.client[worker_db][registration_collection].insert_one({'_id' : worker_collection_name, 
-                                                             'free-since' : int(time.time()),
-                                                             'alive' : True
-                                                             })
-        if worker_collection_name not in self.client[worker_db].list_collection_names():
-            self.client[worker_db][worker_collection_name].insert_one({'tag':'beginning'})
-            
-            time.sleep(0.5)
-        self.eventStream = self.client[worker_db][worker_collection_name].watch()
-        pass
+
+    def worker_listen(self):
+        self.eventStream = self.client[self.worker_db][self.worker_collection_name].watch()
     def worker_instance_report_alive(self):
         self.client[worker_db]['availableWorker'].update_one(
                 {"_id" : self.worker_collection_name} , 
@@ -123,7 +115,7 @@ class worker:
         from dtype import health_report
         self.health_report = health_report( {'dtype' : 'dtype.health_report',   'data' : {'status':'alive', 'sender' : self.name, 'virtual_memory' : dict(psutil.virtual_memory()._asdict()),
                        'cpu' : psutil.cpu_percent()}})
-        self.client[worker_db][receiver].insert_one(self.health_report)
+        self.client[self.worker_db][receiver].insert_one(self.health_report)
         pass
     def process_event_threadable(self, j):
         # process existing doc
