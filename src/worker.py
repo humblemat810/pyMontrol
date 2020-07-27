@@ -19,20 +19,9 @@ exit_code = exit_code_class()
 from  pymongo.errors import DuplicateKeyError
 global process_id
 process_id = set()
-# logging.basicConfig(filename='worker.log', filemode='a', 
-#                     format="%(asctime)s — %(name)s — %(levelname)s — %(funcName)s:%(lineno)d — %(message)s",
-#                     level=logging.DEBUG,
-#                     datefmt='%Y-%m-%d %H:%M:%S')
-# FORMAT = "%(asctime)s — %(name)s — %(levelname)s — %(funcName)s:%(lineno)d — %(message)s"
-            
-# logger = logging.getLogger(__file__ + '_' + worker_name)
-# for hdlr in logger.handlers[:]:  # remove all old handlers
-#     logger.removeHandler(hdlr)
-# formatter = logging.Formatter(FORMAT)
-# fileh = logging.FileHandler('./' +worker_name + '.log', 'a')
-# fileh.setFormatter(formatter)
-# logger.addHandler(fileh) 
-# logger = logging.getLogger(__file__)
+with open(str(pathlib.Path(r'./config.yaml')), 'r') as file:
+    config = yaml.safe_load(file)    
+worker_db = config['worker_db']
 class worker:
     
     def __init__(self):
@@ -130,10 +119,13 @@ class worker:
         import process_data
         process_data.process_data(data)
     def report_health(self, receiver):
-        self.health = {'status':'alive', 'sender' : self.name}
-        self.client[worker_db][receiver].insert_one(self.health)
+        import psutil
+        from dtype import health_report
+        self.health_report = health_report( {'dtype' : 'dtype.health_report',   'data' : {'status':'alive', 'sender' : self.name, 'virtual_memory' : dict(psutil.virtual_memory()._asdict()),
+                       'cpu' : psutil.cpu_percent()}})
+        self.client[worker_db][receiver].insert_one(self.health_report)
         pass
-    def process_eventStream(self,j):
+    def process_event_threadable(self, j):
         # process existing doc
         
         
@@ -162,13 +154,59 @@ class worker:
         from subprocess import Popen
         Popen('python', __file__)
         pass
+    def process_event(self, i):
+        from copy import deepcopy
+        j = deepcopy(i)
+        use_thread = True
+        # print(i["_id"])
+        
+        if j['operationType'] == 'insert':
+            
+            # print(i["_id"])
+            pass
+        else:
+            logging_info = ('discarded activity ' + j['operationType'])
+            print(logging_info)
+            self.logger.info(logging_info)
+            return
+        
+        if use_thread:
+            x = threading.Thread(target=self.process_event_threadable, args=(j,))
+            x.start()
+        else:
+            self.process_event_threadable(j)
+            
+            
+        import time
+        # time.sleep(1)
+        qcnt+=1
+        global process_id
+        try:
+            assert j["_id"]['_data'] not in process_id
+            process_id.add( j["_id"]['_data'])
+            self.client['log']['log'].insert_one( { 'packetID' : j["_id"]['_data'],
+                                                   'activity'  : 'threadStarted' } )
+        except KeyboardInterrupt:
+            raise
+        except AssertionError:
+            logging_info = j["_id"] + ' already in process_id'
+            print(logging_info)
+            self.logger.info(logging_info)
+        
+            
+        
+        logging_info = 'processed' + str(qcnt) + 'packets'
+        print(logging_info)
+        self.logger.info(logging_info)
+    def command_handler_threadable(self):
+        pass
     def work(self):
         from queue import Queue
         max_Queue_cnt = 10
         qcnt = 0
         # q = Queue()
         
-        # y = threading.Thread(target = self.to_be_threaded_to_handle_controller_command)
+        # y = threading.Thread(target = self.command_handler_threadable)
         # y.start()
         
         
@@ -178,49 +216,7 @@ class worker:
         try:
             
             for i in self.eventStream:
-                from copy import deepcopy
-                j = deepcopy(i)
-                use_thread = True
-                # print(i["_id"])
-                
-                if j['operationType'] == 'insert':
-                    
-                    # print(i["_id"])
-                    pass
-                else:
-                    logging_info = ('discarded activity ' + j['operationType'])
-                    print(logging_info)
-                    self.logger.info(logging_info)
-                    continue
-                
-                if use_thread:
-                    x = threading.Thread(target=self.process_eventStream, args=(j,))
-                    x.start()
-                    # q.put(x)
-                    
-                else:
-                    self.process_eventStream(j)
-                import time
-                # time.sleep(1)
-                qcnt+=1
-                global process_id
-                try:
-                    assert j["_id"]['_data'] not in process_id
-                    process_id.add( j["_id"]['_data'])
-                    self.client['log']['log'].insert_one( { 'packetID' : j["_id"]['_data'],
-                                                           'activity'  : 'threadStarted' } )
-                except KeyboardInterrupt:
-                    raise
-                except AssertionError:
-                    logging_info = j["_id"] + ' already in process_id'
-                    print(logging_info)
-                    self.logger.info(logging_info)
-                
-                    
-                
-                logging_info = 'processed' + str(qcnt) + 'packets'
-                print(logging_info)
-                self.logger.info(logging_info)
+                self.process_event(i)
         except KeyboardInterrupt:
             self.being_kill = True
             import worker_command
@@ -228,19 +224,7 @@ class worker:
             command.kill_worker(self.name)
             self.process_command(command)
             raise
-            
-            # if q.qsize() > max_Queue_cnt:
-            #     my_list = []
-            #     while not q.empty():
-            #         my_list.append(q.get())
-            #     for i in my_list:
-            #         i.join()
-            
-            
-        
-                    
-            
-            # self.process_eventStream(i)
+   
         if self.being_kill:
             return exit_code.kill_worker
             

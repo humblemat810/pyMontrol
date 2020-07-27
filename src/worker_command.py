@@ -28,7 +28,7 @@ class worker_command:
 
 class command_report_health(worker_command):
     def __init__(self, worker_name,  sender):
-        self.worker_health(worker_name, worker_command)
+        self.worker_health(worker_name, sender)
         pass
     pass
 class command_kill_worker(worker_command):
