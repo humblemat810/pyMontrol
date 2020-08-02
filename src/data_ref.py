@@ -24,7 +24,13 @@ class external_data_ref:
     
     pass
 class data_ref:
+    '''
     
+    sample use  : 
+        my_data_ref = dr.data_ref(db = worker_db, collection = worker_name)
+        my_data_ref.data_insert(data = worker_command.command_kill_worker(worker_name = worker_name), connectionStr = None, mongoClient = connections.client)
+    
+    '''
     def __init__(self, db, collection, documentID = None):
         self.db, self.collection, self.documentID = db, collection, documentID
         

@@ -5,7 +5,7 @@ Created on Sat Jul 11 00:04:10 2020
 @author: pchan
 """
 
-worker_db = 'LDS_worker'
+worker_db = 'pc_worker'
 import sys, os, pathlib
 sys.path.append(str(pathlib.Path('../src/')))
 import connections
@@ -44,7 +44,7 @@ def send_data_by_thread2(data):
     my_data_ref.documentID = data_ref_insert_result.inserted_id
     pass
 use_thread = True
-for i in range(10):
+for i in range(1):
     if use_thread:
         from copy import deepcopy
         x = threading.Thread(target = send_data_by_thread, args = (deepcopy(data),))

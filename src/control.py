@@ -31,6 +31,7 @@ from _base_worker import base_worker
 class controller(base_worker):
     # def atomic_auto_assign_new_data(self, new_doc, mongoClient):
     name : str
+    check_worker_on = True
     #     pass
 
     def atomic_assign_data(self, doc, mongoClient, db_from , col_from ,db_to,  col_to):
@@ -65,15 +66,6 @@ class controller(base_worker):
         worker_collection_name = self.worker_collection_name
         self.logger.info("listening to " + worker_db + worker_collection_name)
         self.eventStream = self.client[worker_db][worker_collection_name].watch()
-        event_stream_pipeline = [{"$match" : 
-                                  {'operationType' :
-                                   {"$in" : 
-                                    ['insert', 'delete']
-                                    }
-                                   }
-                                  }]
-        event_stream_pipeline = []
-        
         
         try:
             resume_token = connections.client['eventTrigger']['resume_token'].find_one()['value']
@@ -90,61 +82,8 @@ class controller(base_worker):
         availableWorker = mongoClient[worker_db]['availableWorker'].find_one({})
         return(availableWorker)
         pass
-    check_worker_on = True
-    def interval_check_worker_availability(self, interval = 120):
-        while(self.check_worker_on):
-            self.find_and_remove_all_MIA_worker_availability()
-            t = Thread(target = self.find_and_remove_all_MIA_worker_availability)
-            t.start()
-            time.sleep(interval)
-        pass
-    def find_and_remove_all_MIA_worker_availability(self):
-        # if a worker missing in action, remove that worker from collection jobboard
-        # print('find and remove fake worker')
-        for workerBoardCollection in ['availableWorker', 'availableController']:
-            worker_cursor = self.client[worker_db][workerBoardCollection].find({})
-            for worker_record in worker_cursor:
-                worker_name = worker_record['_id']
-                # self.find_and_remove_MIA_worker_availability(worker_name)
-                # print('found worker', worker_name)
-                from threading import Thread
-                t = Thread(target = self.find_and_remove_MIA_worker_availability, args = (worker_name,))
-                t.start()
-        # print('all worker checked')
-        pass
-    def find_and_remove_MIA(self, worker_name, register_collection_name = 'availableWorker'):
-        self.get_worker_health(worker_name)
-        import time
-        time.sleep(5)
-        from pymongo.read_concern import ReadConcern
-        from pymongo.write_concern import WriteConcern
-        from pymongo.read_preferences import ReadPreference
-        wc_majority = WriteConcern("majority", wtimeout=2000)
-        session=  self.client.start_session()
-        session.start_transaction(read_concern=ReadConcern('local'),
-                                  write_concern=wc_majority)
-        record = self.client[worker_db] [self.name].find_one_and_delete({'data.sender' : worker_name})
-        if record is None:
-            # kill_worker
-            self.client[worker_db][register_collection_name].delete_many({"_id": worker_name} )
-            pass
-        else:
-            self.client['log']['health_history'].insert_one(record)
-        session.commit_transaction()
-        session.end_session()
-        logging.info('removed worker' + worker_name + 'from ' +register_collection_name)
-        pass
-    def find_and_remove_MIA_controller_availability(self, worker_name):
-        # if a worker missing in action, remove that worker from collection jobboard
-        # print('heartbeating', worker_name)
-        self.find_and_remove_MIA(worker_name, 'availableController')
-        pass
     
-    def find_and_remove_MIA_worker_availability(self, worker_name):
-        # if a worker missing in action, remove that worker from collection jobboard
-        # print('heartbeating', worker_name)
-        self.find_and_remove_MIA(worker_name)
-        pass
+
     
     def routeDataStream(self,fullDocument, mongoClient):
         
@@ -187,50 +126,8 @@ class controller(base_worker):
         import connections
         self.client = connections.client
         pass
-    @staticmethod
-    def worker_exist(worker_name):
-        if not worker_name.startswith('test_controller') and not worker_name.startswith('test_worker') and not worker_name.startswith(worker_db):
-            return False
-            # raise(ValueError('bad collection name : '+ worker_name))
-            pass
-        if (not(worker_name  in  connections.client[worker_db].list_collection_names())
-            and  connections.client[worker_db]['availableWorker'].find_one({'_id' : worker_name}) is None):
-            return False
-            # raise(ValueError('collection name not in worker collections'))
-            pass
-        return True
-        pass
-    @staticmethod
-    def kill_worker(worker_name):
-        if controller.worker_exist(worker_name):
-            controller.worker_exist(worker_name)
-            import worker_command
-            import data_ref as dr
-            # kill_command =worker_command.worker_command('kill')
-            my_data_ref = dr.data_ref(db = worker_db, collection = worker_name)
-            my_data_ref.data_insert(data = worker_command.command_kill_worker(worker_name = worker_name), connectionStr = None, mongoClient = connections.client)
-        pass
-    
-    def get_worker_health(self,worker_name):
-        # if controller.worker_exist(worker_name):
-        import worker_command
-        import data_ref as dr
-        # controller.worker_exist(worker_name)
-        get_health_command = worker_command.command_report_health(worker_name, self.name)
-        my_data_ref = dr.data_ref(db = worker_db, collection = worker_name)
-        my_data_ref.data_insert(get_health_command, mongoClient = connections.client)
-        pass
-    
-    @staticmethod
-    def worker_reload(worker_name):
-        if controller.worker_exist(worker_name):
-            import worker_command
-            import data_ref as dr
-            reload_code_command =worker_command.worker_command('reload_code')
-            my_data_ref = dr.data_ref(db = worker_db, collection = worker_name)
-            my_data_ref.data_insert(data = reload_code_command, connectionStr = None, mongoClient = connections.client)
-        pass
-    def worker_managerment(self,mongoClient):
+
+    def worker_management(self,mongoClient):
         # kill or wake up sleeping worker
         c = mongoClient[worker_db]['availableWorker'].find()
         for worker in c:
@@ -239,109 +136,81 @@ class controller(base_worker):
                 pass
             pass
         pass    
+    def record_post_threadable_event(self):
+        self.logging_doc_results()
+        self.event_cnt += 1
+        
+        self.logger.info('event count' + str( self.event_cnt))
+        
+        connections.client['log'] ['controller_log'].insert_one(
+            {'event count' : self.event_cnt, 
+             "utctime": datetime.datetime.utcnow()}
+            )
     def kill_controller(self, controller_ref):
         raise NotImplementedError
-        pass
+    
+    
+    
+    def process_event_threadable(self, j):   # worker thread process data
+        # process existing doc
+        
+        doc = j['fullDocument']
+        if not self.check_document_integrity(doc):
+            return
 
-    def process_dataStream(self, i):
-        # logger.info(i)
-        if 'command' in i['fullDocument']:
-            # controller non specific commands here
-            # if i['command'] == 'break':
-            #     resume_token = i['_id']
-            #     connections.client['eventTrigger']['resume_token'].replace_one({'_id': 'resume_token'}, 
-            #                                                            {'_id': 'resume_token', 'value': resume_token['_data']},
-            #                                                            upsert = True
-            #                                                            )    
-                # pass
+        self.process_doc(doc)
+        
+        self.record_post_threadable_event() 
+        
+        
+        
+        # =============== to_refactor ==============================
+    def process_event2(self, i):  # controller route data
+        from copy import deepcopy
+        
+        j = deepcopy(i)
+        
+        if 'command' in j['fullDocument']:
+
             pass
         elif i['operationType'] == 'insert':
+            pass
+        else:
+            return 
+        
+        if use_thread:
+            x = threading.Thread(target=self.process_event_threadable, args=(j,))
+            x.start()
+        else:
+            self.process_event_threadable(j)
+    def check_document_integrity2(self, j):
+        # 2 check what it listen to, original check the one with its name
+        if 'tag' in j:
+            return False
+        return True
+        pass
+    def process_event_threadable2(self, j):
+        doc = j['fullDocument']
+        if not self.check_document_integrity2():
+            return
 
-            self.routeDataStream(i['fullDocument'], connections.client)
+        self.process_doc2(doc)
+        self.record_post_threadable_event2()   
+    def record_post_threadable_event2(self):
+        self.logging_doc_results2()
         self.logger.info('b4 resume token')
-        resume_token = i['_id']
+        resume_token = j['_id']
         connections.client['eventTrigger']['resume_token'].replace_one({'_id': 'resume_token'}, 
                                                                        {'_id': 'resume_token', 'value': resume_token},
                                                                        upsert = True
                                                                        )
         self.logger.info('after resume token')
         pass
-    def work(self):
-        event_cnt = 0
-        import threading
-        
-        # first process existing doc for controller
-        for doc in self.client[worker_db][self.worker_collection_name].find({'tag' : None}):
-            self.process_doc(doc) 
-        # next listen to new controller commands
-        y = threading.Thread(target = self.command_handler_threadable)
-        y.start()
-        # self.command_handler_threadable()
-        try:
-            for i in self.dataStream:
-                event_cnt += 1
-                self.logger.info('event count' + str( event_cnt))
-                connections.client['log'] ['controller_log'].insert_one({'event count' : event_cnt, "utctime": datetime.datetime.utcnow()})
-                if i['operationType'] == 'insert':
-                    pass
-                else:
-                    continue
-                from copy import deepcopy
-                # time.sleep(1)
-                
-                if use_thread:
-                    x = threading.Thread(target = self.process_dataStream, args = (deepcopy(i),))
-                    x.start()
-                else:
-                    self.process_dataStream(i)
-        except Exception as e:
-            if e.args[0] == 'Error in $cursor stage :: caused by :: operation was interrupted':
-                # ok
-                pass
-            else:
-                self.logger.info('err')
-                raise
-            pass
-        if self.being_kill:
-            self.logger.info('=========== being killed ==========manage_new_data_for_execution')
-            return exit_code.kill_worker
-        # return self.manage_new_data_for_execution()
-        pass
-    def process_event_threadable(self, j):
-        doc = j['fullDocument']
-        # process doc here
-        self.process_doc(doc)
-        pass
-    def process_event(self, i):
-        from copy import deepcopy
-        j = deepcopy(i)
-        use_thread = True
-        # print(i["_id"])
-        
-        if j['operationType'] == 'insert':
-            
-            # print(i["_id"])
-            pass
-        else:
-            logging_info = ('discarded activity ' + j['operationType'])
-            print(logging_info)
-            self.logger.info(logging_info)
-            return
-        if use_thread:
-            x = threading.Thread(target=self.process_event_threadable, args=(j,))
-            x.start()
-            
-        else:
-            self.process_event_threadable(j)
-              
-        if self.being_kill:
-            logger.info('closing data stream')
-            self.dataStream.close()
-            logger.info('closing event stream')
-            self.eventStream.close()
-            self.client[worker_db][self.registration_collection].delete_one({'_id' : self.worker_collection_name})
-            
-            
+    
+    #  ================= refactor_end
+    
+    def wrapped_routeDataStream(i):
+        self.routeDataStream(i['fullDocument'], connections.client)
         pass
     def command_handler_threadable(self):
         '''
@@ -352,18 +221,67 @@ class controller(base_worker):
         my_data_ref = dr.data_ref(db = worker_db, collection = controller_to_kill)
         my_data_ref.data_insert(data = kill_command, connectionStr = None, mongoClient = connections.client)
         '''
-        
-        self.logger.info('thread....')
-        for i in self.eventStream:
-            self.process_event(i)
-            if self.being_kill:
-                break
-        self.logger.info('end thread')
+        try:
+            self.logger.info('thread....')
+            for i in self.eventStream:
+                from copy import deepcopy
+                if self.filter_command_eventStream(i):
+                    pass
+                else:
+                    continue
+                self.process_event2(deepcopy(i))
+                self.process_if_being_killed()
+            self.logger.info('end thread')
+        except KeyboardInterrupt:
+            import worker_command
+            command = worker_command.command_kill_worker(self.name)
+            self.process_common_command(command)
+            self.being_kill = True
+            self.process_if_being_killed()
+            pass
         pass
-    def process_doc(self, doc):
+
+
+    def pre_work(self):
+        self.event_cnt = 0
+        self.work_listenStream = self.dataStream
+        self.command_listenStream = self.eventStream
+        
+        self.changeStream_process_callback = self.process_event2
+        self.process_doc_callback = self.process_controller_command
+        self.process_doc_callback2 = self.wrapped_routeDataStream
+        pass
+    def filter_command_eventStream(self, i):
+        if i['operationType'] == 'insert':
+            return True
+        else:
+            return False
+        pass
+    def filter_eventStream(self, i):
+        if i['operationType'] == 'insert':
+            return True
+        else:
+            return False
+
+
+    def check_document_integrity(self, doc):
+        if 'tag' in doc:
+            return False
+        return True
+        pass
+
+    def logging_doc_results(self, doc = None):
+        pass
+    def logging_doc_results2(self, doc = None):
+        pass
+    def vomit_job_back_to_queue(self):
+        
+        pass
+    def process_controller_command(self, doc):
         import dtype
         data = doc['data']
         if 'tag' in doc:
+            print('tagging omitted ', str(doc))
             return
         if 'dtype' in doc:
             if  doc['dtype'] == 'dtype.health_report':
@@ -375,14 +293,15 @@ class controller(base_worker):
                 session.start_transaction(read_concern=ReadConcern('local'),
                                           write_concern=wc_majority)
                 record = self.client[worker_db] [self.name].find_one_and_delete({'_id' : doc['_id']})
-                
                 self.client['log']['health_history'].insert_one(record)
                 session.commit_transaction()
                 session.end_session()
+                print({ 'from' : self.name, 'to': {'log' : 'health_history'} , 'content' : record, 'file' : __file__})
                 pass
+        
         else:  # process pickled data
             data_unpickled = pickle.loads(data)
-            logger.info('command unpickled '+ 'type' + str(type(data_unpickled)))
+            self.logger.info('command unpickled '+ 'type' + str(type(data_unpickled)))
             if type(data_unpickled) is controller_command.controller_command:
                 if type(data_unpickled.command) is str:
                     if data_unpickled.command == 'kill':
@@ -393,6 +312,12 @@ class controller(base_worker):
                         if self.command['kill'] == self.worker_collection_name:
                             logger.info('kill_command_received')
                             self.being_kill = True
+            else:
+                import worker_command
+                if  issubclass(type(data_unpickled),  worker_command.worker_command):
+                    self.process_common_command(command = data_unpickled)
+                    
+                    pass
             record = self.client[worker_db] [self.name].find_one_and_delete({'_id' : doc['_id']})
         
 
@@ -418,9 +343,24 @@ if __name__ == '__main__':
             worker_name = worker_name_prefix  + str(num)
             # TO_DO, check if that controller exist and kill if neccessary
             my_worker.name = 'temp'
+            my_worker.client[worker_db][my_worker.name].delete_many({'datetime' : 
+                                                             {'$lt' : datetime.datetime.now() - datetime.timedelta(seconds=30)
+                                                              }
+                                                         })
             my_worker.find_and_remove_MIA_controller_availability(worker_name)
-            result = my_worker.worker_register(worker_collection_name = worker_name)
-            
+            try:
+                from errorType import duplicate_worker_name_error
+                result = my_worker.worker_register(worker_collection_name = worker_name, 
+                                               registration_collection = 'availableController')
+            except (pymongo.errors.DuplicateKeyError, duplicate_worker_name_error) as e:
+                
+                fail_cnt +=1
+                num+=1
+                if fail_cnt >= 10:
+                    print('maximum retry exceeded')
+                    raise
+                    
+                continue
             log_f_name = str(pathlib.Path( worker_name + '.log'))
             
             import os
@@ -440,10 +380,8 @@ if __name__ == '__main__':
             from threading import Thread
             
             my_worker.logger = logger
-            # my_worker.interval_check_worker_availability()
-            t = Thread(target = my_worker.interval_check_worker_availability)
-            t.start()
-            my_worker.worker_listen()
+            
+            
             if result is None:
                 raise(Exception('abnormal register exit'))
             result_code, success_or_err = result
@@ -452,7 +390,11 @@ if __name__ == '__main__':
                     raise(success_or_err)
                 pass
             else:
+                my_worker.interval_check_worker_availability
+                # t = Thread(target = my_worker.interval_check_worker_availability)
+                # t.start()
                 logger.info('worker registered as '+ worker_name)
+                my_worker.worker_listen()
                 worker_exit_code = my_worker.work()
                 if worker_exit_code == exit_code.kill_worker:
                     break
@@ -463,7 +405,8 @@ if __name__ == '__main__':
                 # connections.client['log'] ['controller_log'].insert_one({'event count' : event_cnt})
                 logger.info('this line should show up once when the controller start up with resume after enabled, when the resume after queue is emptied')
             
-        except:
+        except Exception as e:
+            
             my_worker.check_worker_on = False
             if strict_mode:
                 raise

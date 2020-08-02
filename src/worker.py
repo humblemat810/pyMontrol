@@ -25,7 +25,7 @@ worker_db = config['worker_db']
 from _base_worker import base_worker
 
 class worker(base_worker):
-    
+    check_worker_on = False
     def __init__(self):
         self.worker_db = worker_db
         self.being_kill = False
@@ -49,36 +49,45 @@ class worker(base_worker):
                 }
             )
         pass
-    def process_command(self, command : worker_command.worker_command):
-        if 'kill' in command.command_json:
-            logging_info = 'killing worker ' + str(self.worker_collection_name) +' by worker_command.worker_command'
-            self.logger.info(logging_info)
-            self.client[worker_db]['availableWorker'].remove({'_id': self.worker_collection_name})
-            self.vomit_job_back_to_queue()
-            self.client[worker_db][self.worker_collection_name].drop()
+    
+    # def process_worker_command(self, command : worker_command.worker_command):
+    #     if 'kill' in command.command_json:
+    #         logging_info = 'killing worker ' + str(self.worker_collection_name) +' by worker_command.worker_command'
+    #         self.logger.info(logging_info)
+    #         self.client[worker_db]['availableWorker'].remove({'_id': self.worker_collection_name})
+    #         self.vomit_job_back_to_queue()
+    #         self.client[worker_db][self.worker_collection_name].drop()
             
             
-            print(logging_info)
-            self.being_kill = True
-            self.eventStream.close()
-            return exit_code.kill_worker
-        if 'reload_code' in command.command_json :
-            import builtins
-            from IPython.lib import deepreload
-            builtins.reload = deepreload.reload
-            logging_info = 'worker ' + self.worker_collection_name + ' reloaded code'
-            print(logging_info)
-            self.logger.info(logging_info)
+    #         print(logging_info)
+    #         self.being_kill = True
+    #         self.eventStream.close()
+    #         return exit_code.kill_worker
+    #     if 'reload_code' in command.command_json :
+    #         import builtins
+    #         from IPython.lib import deepreload
+    #         builtins.reload = deepreload.reload
+    #         logging_info = 'worker ' + self.worker_collection_name + ' reloaded code'
+    #         print(logging_info)
+    #         self.logger.info(logging_info)
             
-            return
-        if 'spawn_new_adjacent_worker' in command.command_json :
-            self.spawn_new_worker()
-            pass
-        if 'report_health' in command.command_json:
-            report_to = command.command_json['report_health'] ['to']
-            self.report_health(receiver = report_to)
-            pass
+    #         return
+    #     if 'spawn_new_adjacent_worker' in command.command_json :
+    #         self.spawn_new_worker()
+    #         pass
+    #     if 'report_health' in command.command_json:
+    #         report_to = command.command_json['report_health'] ['to']
+    #         self.report_health(receiver = report_to)
+    #         pass
+    #     pass
+
+    def kill_worker(self):
+        from errorType import worker_method_unauthorized
+        print('worker type not authorized to run this method')
+        raise
         pass
+
+
     def vomit_job_back_to_queue(self):
         
         pipeline = []
@@ -87,92 +96,13 @@ class worker(base_worker):
         self.client[worker_db][self.name].aggregate(pipeline)
         
         pass
-    def process_doc(self, doc):
-        if 'data' not in doc:
-            print('irrelevant data format inputted', doc)
-            return
-        import pickle
-        data_unpickled = pickle.loads(doc ['data'])
-        
-        # print('data type : '  , type(data_unpickled) )
-        if  type(data_unpickled) is data_ref.data_ref:
-            
-            data = data_unpickled.deref_data(mongoClient = self.client)
-            self.logger.info('deref_data')
-            # print('deref_data')
-        elif  issubclass(type(data_unpickled),  worker_command.worker_command):
-            self.process_command(command = data_unpickled)
-            return
-            pass
-        else :
-            # assume data_unpickled is direct data
-            data = data_unpickled
-            self.logger.info('raw_data')
-        import process_data
-        process_data.process_data(data)
-    def report_health(self, receiver):
-        import psutil
-        from dtype import health_report
-        self.health_report = health_report( {'dtype' : 'dtype.health_report',   'data' : {'status':'alive', 'sender' : self.name, 'virtual_memory' : dict(psutil.virtual_memory()._asdict()),
-                       'cpu' : psutil.cpu_percent()}})
-        self.client[self.worker_db][receiver].insert_one(self.health_report)
-        pass
-    def process_event_threadable(self, j):
-        # process existing doc
-        
-        
-        doc = j['fullDocument']
-        if 'data' not in doc:
-            print('irrelevant data format inputted', doc)
-            return
-        self.process_doc(doc)
-        try:
-            insert_result = self.client[worker_db]['availableWorker'].insert_one({'_id' : self.worker_collection_name,
-                                                             'free-since' : int(time.time())})
-        except DuplicateKeyError:
-            pass
-        logging_info = self.worker_collection_name + ' is now free'
-        print(logging_info)
-        self.logger.info(logging_info)
-        self.client[worker_db][self.worker_collection_name].delete_one(doc)
-        logging_info = 'packet with _id', j["_id"]['_data'] + 'processed and removed from worker'
-        print(logging_info)
-        self.logger.info(logging_info)
-        self.client['log']['log'].insert_one( { 'packetID' : j["_id"]['_data'],
-                                                       'activity'  : 'data_processed' } )
-        pass
-        
-    def spawn_new_worker(self):
-        from subprocess import Popen
-        Popen('python', __file__)
-        pass
-    def process_event(self, i):
+    def logging_doc_results(self, i):
         from copy import deepcopy
         j = deepcopy(i)
-        use_thread = True
-        # print(i["_id"])
-        
-        if j['operationType'] == 'insert':
-            
-            # print(i["_id"])
-            pass
-        else:
-            logging_info = ('discarded activity ' + j['operationType'])
-            print(logging_info)
-            self.logger.info(logging_info)
-            return
-        
-        if use_thread:
-            x = threading.Thread(target=self.process_event_threadable, args=(j,))
-            x.start()
-        else:
-            self.process_event_threadable(j)
-            
-            
         import time
         # time.sleep(1)
-        self.qcnt+=1
-        qcnt = self.qcnt
+        self.event_cnt+=1
+        event_cnt = self.event_cnt
         global process_id
         try:
             assert j["_id"]['_data'] not in process_id
@@ -186,44 +116,111 @@ class worker(base_worker):
             print(logging_info)
             self.logger.info(logging_info)
         
-            
-        
-        logging_info = 'processed' + str(qcnt) + 'packets'
+        logging_info = 'processed' + str(event_cnt) + 'packets'
         print(logging_info)
         self.logger.info(logging_info)
+
+    def process_command_or_data(self, doc):
+        import pickle
+        data_unpickled = pickle.loads(doc ['data'])
+        print('data_tyoe '+ type(data_unpickled) + ' received')
+        # print('data type : '  , type(data_unpickled) )
+        if  type(data_unpickled) is data_ref.data_ref:
+            
+            data = data_unpickled.deref_data(mongoClient = self.client)
+            self.logger.info('deref_data')
+            # print('deref_data')
+        elif  issubclass(type(data_unpickled),  worker_command.worker_command):
+            self.process_common_command(command = data_unpickled)
+            return
+            pass
+        else :
+            # assume data_unpickled is direct data
+            data = data_unpickled
+            self.logger.info('raw_data')
+        import process_data
+        process_data.process_data(data)
+
+    def check_document_integrity(self, doc):
+        if 'tag' in doc:
+            return False
+        if 'data' not in doc:
+            print('irrelevant data format inputted', doc)
+            return False
+        else:
+            return True
+        pass
+    def process_event(self, i):  # worker thread process data
+        from copy import deepcopy
+        j = deepcopy(i)
+        
+        if j['operationType'] == 'insert':
+            
+            pass
+        else:
+            logging_info = ('discarded activity ' + j['operationType'])
+            print(logging_info)
+            self.logger.info(logging_info)
+            return
+        
+        
+        if use_thread:
+            x = threading.Thread(target=self.process_event_threadable, args=(j,))
+            x.start()
+        else:
+            self.process_event_threadable(j)
+    def process_event_threadable(self, j):   # worker thread process data
+        # process existing doc
+        
+        doc = j['fullDocument']
+        if not self.check_document_integrity(doc):
+            return
+
+        self.process_doc(doc)
+        self.record_post_threadable_event(j)        # worker level log 
+    def record_post_threadable_event(self, j):
+        self.logging_doc_results(j)   # doc level logging
+        try:
+            insert_result = self.client[worker_db]['availableWorker'].insert_one({'_id' : self.worker_collection_name,
+                                                             'free-since' : int(time.time())})
+        except DuplicateKeyError:
+            pass
+        logging_info = self.worker_collection_name + ' is now free'
+        print(logging_info)
+        self.logger.info(logging_info)
+        doc = j['fullDocument']
+        self.client[worker_db][self.worker_collection_name].delete_one(doc)
+        logging_info = 'packet with _id', j["_id"]['_data'] + 'processed and removed from worker'
+        print(logging_info)
+        self.logger.info(logging_info)
+        self.client['log']['log'].insert_one( { 'packetID' : j["_id"]['_data'],
+                                                       'activity'  : 'data_processed' } )
+        pass
+        
+
     def command_handler_threadable(self):
         pass
-    def work(self):
-        from queue import Queue
-        max_Queue_cnt = 10
-        self.qcnt = 0
-        # q = Queue()
-        
-        # y = threading.Thread(target = self.command_handler_threadable)
-        # y.start()
-        
-        
-        
-        for doc in self.client[worker_db][self.worker_collection_name].find({'tag' : None}):
-            self.process_doc(doc)
-        try:
-            
-            for i in self.eventStream:
-                self.process_event(i)
-        except KeyboardInterrupt:
-            self.being_kill = True
-            import worker_command
-            command = worker_command.worker_command()
-            command.kill_worker(self.name)
-            self.process_command(command)
-            raise
-   
-        if self.being_kill:
-            return exit_code.kill_worker
-            
 
-        pass
+
+    
+    def pre_work(self):
+        self.event_cnt = 0
         
+        self.work_listenStream = self.eventStream
+        self.changeStream_process_callback = self.process_event
+        self.process_doc_callback = self.process_command_or_data
+        
+        pass
+    def filter_eventStream(self, i):
+        return True
+        pass
+
+
+    
+    
+    
+    
+    
     pass
 
 
@@ -239,13 +236,20 @@ if __name__ == '__main__':
         while fail_cnt < 10:
             
             worker_name = worker_name_prefix  + str(num)
+            from errorType import duplicate_worker_name_error
             try:
                 my_worker.worker_register(worker_collection_name = worker_name)
-            except pymongo.errors.DuplicateKeyError:
+            
+            except (pymongo.errors.DuplicateKeyError, duplicate_worker_name_error) as e:
                 
                 fail_cnt +=1
                 num+=1
+                if fail_cnt >= 10:
+                    print('maximum retry exceeded')
+                    raise
+                    
                 continue
+            
             FORMAT = "%(asctime)s — %(name)s — %(levelname)s — %(funcName)s:%(lineno)d — %(message)s"
             
             logger = logging.getLogger(__file__ + '_' + worker_name)
