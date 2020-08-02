@@ -195,8 +195,8 @@ class controller(base_worker):
             return
 
         self.process_doc2(doc)
-        self.record_post_threadable_event2()   
-    def record_post_threadable_event2(self):
+        self.record_post_threadable_event2(j)   
+    def record_post_threadable_event2(self, j):
         self.logging_doc_results2()
         self.logger.info('b4 resume token')
         resume_token = j['_id']
@@ -209,7 +209,7 @@ class controller(base_worker):
     
     #  ================= refactor_end
     
-    def wrapped_routeDataStream(i):
+    def wrapped_routeDataStream(self, i):
         self.routeDataStream(i['fullDocument'], connections.client)
         pass
     def command_handler_threadable(self):
