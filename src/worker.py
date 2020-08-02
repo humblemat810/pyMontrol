@@ -123,7 +123,7 @@ class worker(base_worker):
     def process_command_or_data(self, doc):
         import pickle
         data_unpickled = pickle.loads(doc ['data'])
-        print('data_tyoe '+ type(data_unpickled) + ' received')
+        print('data_tyoe '+ str(type(data_unpickled)) + ' received')
         # print('data type : '  , type(data_unpickled) )
         if  type(data_unpickled) is data_ref.data_ref:
             

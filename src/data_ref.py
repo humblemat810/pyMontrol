@@ -25,7 +25,7 @@ class external_data_ref:
     pass
 class data_ref:
     '''
-    
+    connection is intentionally excluded from the object to avoid saving the connection itself to db
     sample use  : 
         my_data_ref = dr.data_ref(db = worker_db, collection = worker_name)
         my_data_ref.data_insert(data = worker_command.command_kill_worker(worker_name = worker_name), connectionStr = None, mongoClient = connections.client)
@@ -33,7 +33,7 @@ class data_ref:
     '''
     def __init__(self, db, collection, documentID = None):
         self.db, self.collection, self.documentID = db, collection, documentID
-        
+        self.data_pointer_ref = None
         pass
     def deref_data(self, **kwarg):
         mongoClient = resolve_mongo_client(**kwarg)
@@ -59,7 +59,42 @@ class data_ref:
         
         return(mongoClient[self.db][self.collection].insert_one({'data' : pickled_data, 'insertion_datetime' : datetime.now()}))
         pass
-    
+    def dd_insert(self, data, **kwarg):
+        mongoClient = resolve_mongo_client(**kwarg)
+        my_data_store_ref = data_ref(db = 'eventTrigger', collection = 'data_store')
+        import pickle
+        from datetime import datetime
+        pickled_data = pickle.dumps(data)
+        raw_data_insert_result = mongoClient['eventTrigger']['data_store'].insert_one({'data' : pickled_data, 'insertion_datetime' : datetime.now()})
+        my_data_store_ref.documentID = raw_data_insert_result.inserted_id
+        self.data_store_ref = my_data_store_ref
+        my_data_ref = data_ref(db = self.db, collection = self.collection)
+        data_ref_insert_result = my_data_ref.data_insert(data = my_data_store_ref, mongoClient = mongoClient)
+        my_data_ref.documentID = data_ref_insert_result.inserted_id
+        self.data_pointer_ref = my_data_ref
+    def dd_deref(self, **kwarg):
+        if self.data_pointer_ref is None:
+            assert(hasattr(self, 'documentID'))
+            assert(hasattr(self, 'db'))
+            assert(hasattr(self, 'collection'))
+            
+            mongoClient = resolve_mongo_client(**kwarg)
+            data_pickled = (mongoClient[self.db][self.collection].find_one({"_id" : self.documentID}))
+            import pickle
+            unpickled_data = pickle.loads(data_pickled['data'])
+            assert type(unpickled_data) is data_ref
+            
+            self.data_pointer_ref = unpickled_data
+        
+        data_pickled = (mongoClient["eventTrigger"]['data_packet_input'].find_one({"_id" : self.data_pointer_ref.documentID}))
+        unpickled_data = pickle.loads(data_pickled['data'])
+        if type(unpickled_data) is external_data_ref:
+            data = unpickled_data.deref()
+        else :
+            data = unpickled_data
+        return  data
+        
+                
     def delete_data(self, **kwarg):
         mongoClient = resolve_mongo_client(**kwarg)
         return(mongoClient[self.db][self.collection].delete_one({"_id" : self.documentID}))
