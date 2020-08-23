@@ -5,6 +5,7 @@ def main_control_loop(q):
     # process commands in topological order according to the workflow specified in data['dag']
     # data['data'], the data to be processed
     # data['dag']  a dag object consist of workflow to be applied to the data, 
+    # dag: subclass of networkx.DiGraph()
     # and possibly including the settings in the option in that certain blocks
     # 
     while not q.empty():
@@ -21,10 +22,15 @@ def local_control_init(data):
     from local_data_controller_helper import store_dag
     from copy import deepcopy
     dag = data['dag']
+    import networkx as nx
+    if not issubclass(type(dag), nx.DiGraph):
+        raise(ValueError("Dag object has to be networkx DiGraph"))
+    # trick to wrap the dag with dummy nodes start
     modified_dag = deepcopy(dag)
     modified_dag.add_node('init0', process_name = 'init')
     modified_dag.add_edge('init0', data['current_node_name'])
-    store_dag(modified_dag)
+    # trick to wrap the dag with dummy nodes end
+    store_dag(modified_dag)  
     
     from queue import Queue
     data['passed_local_controller'] = True

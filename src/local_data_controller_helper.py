@@ -3,6 +3,9 @@
 Created on Sun Jul 12 13:20:41 2020
 @author: Pchan
 """
+
+
+
 def load_data(data):
     # import local_control_data
 
@@ -11,6 +14,10 @@ def load_data(data):
     #     local_control_data.map_of_data[current_node_name] = data
     pass
 def store_dag(dag):
+    '''
+    cache dag in more efficient form
+    data and processed and cached in the data module local_control_data
+    '''
     import local_control_data
     local_control_data.dag = dag
     local_control_data.reverse_dag = dag.reverse()
