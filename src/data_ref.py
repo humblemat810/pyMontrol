@@ -23,6 +23,20 @@ class external_data_ref:
         pass
     
     pass
+def _base_dd_insert(data, data_db, data_col, data_ref_db, data_ref_col, **kwarg):
+    mongoClient = resolve_mongo_client(**kwarg)
+    my_data_store_ref = data_ref(db = data_db, collection = 'data_store')
+    import pickle
+    from datetime import datetime
+    pickled_data = pickle.dumps(data)
+    raw_data_insert_result = mongoClient[data_db][data_col].insert_one({'data' : pickled_data, 'insertion_datetime' : datetime.now()})
+    my_data_store_ref.documentID = raw_data_insert_result.inserted_id
+    
+    my_data_ref = data_ref(db = data_ref_db, collection = data_ref_col)
+    data_ref_insert_result = my_data_ref.data_insert(data = my_data_store_ref, mongoClient = mongoClient)
+    my_data_ref.documentID = data_ref_insert_result.inserted_id
+    
+    return my_data_store_ref, my_data_ref
 class data_ref:
     '''
     connection is intentionally excluded from the object to avoid saving the connection itself to db
@@ -38,7 +52,9 @@ class data_ref:
     def deref_data(self, **kwarg):
         mongoClient = resolve_mongo_client(**kwarg)
         data_pickled = (mongoClient[self.db][self.collection].find_one({"_id" : self.documentID}))
-        
+        if data_pickled is None:
+            from errorType import data_ref_not_exist
+            raise data_ref_not_exist('db = ' + self.db + ', collection ='+  self.collection  + ', _id =' + str(self.documentID))
         import pickle
         unpickled_data = pickle.loads(data_pickled['data'])
         if type(unpickled_data) is external_data_ref:
@@ -59,6 +75,8 @@ class data_ref:
         
         return(mongoClient[self.db][self.collection].insert_one({'data' : pickled_data, 'insertion_datetime' : datetime.now()}))
         pass
+
+    
     def dd_insert(self, data, **kwarg):
         mongoClient = resolve_mongo_client(**kwarg)
         my_data_store_ref = data_ref(db = 'eventTrigger', collection = 'data_store')

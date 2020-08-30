@@ -13,3 +13,7 @@ class worker_method_unauthorized(Exception):
 class duplicate_worker_name_error(ValueError):
     
     pass
+
+
+class data_ref_not_exist(FileNotFoundError):
+    pass

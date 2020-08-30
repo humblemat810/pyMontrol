@@ -6,13 +6,13 @@ Created on Mon Jul 27 10:01:26 2020
 """
 
 # TO_DO: abstract base worker both controller
-
+processed_data_col = 'processed_packet'
 
 import connections, threading
 from threading import Thread
 worker_db  = 'pc_worker'
 from abc import ABCMeta, abstractmethod
-import pymongo, time
+import pymongo, time, datetime
 class exit_code_class:
     kill_worker = 0
     fail = 1
@@ -20,6 +20,26 @@ class exit_code_class:
     success = 3
 exit_code = exit_code_class()
 import worker_command
+
+
+def mongo_transaction(doc , mongoClient, db_from, col_from, db_to, col_to, logging_info):
+    from pymongo.read_concern import ReadConcern
+    from pymongo.write_concern import WriteConcern
+    from pymongo.read_preferences import ReadPreference
+    wc_majority = WriteConcern("majority", wtimeout=2000)
+    session=  mongoClient.start_session()
+    import logging
+    logging.info(logging_info + ' start')
+    session.start_transaction(read_concern=ReadConcern('local'),
+                              write_concern=wc_majority)
+    # Important:: You must pass the session to the operations.
+    collection_from = mongoClient[db_from][col_from]
+    collection_to = mongoClient[db_to][col_to]
+    collection_from.find_one_and_delete({'_id' : doc['_id']}, session=session)
+    collection_to.replace_one({'_id' : doc['_id']}, doc , upsert = True, session = session)
+    mongoClient['log'] ['controller_log'].insert_one({'info' : logging_info, "utctime": datetime.datetime.utcnow()}, session = session)
+    session.commit_transaction()
+    session.end_session()
 
 
 class base_worker(metaclass=ABCMeta):
@@ -36,6 +56,10 @@ class base_worker(metaclass=ABCMeta):
     def worker_register(self, worker_collection_name = None,registration_collection = 'availableWorker'):
         # assert not (worker_collection_name  in [i["_id"]for i in self.client[self.worker_db][registration_collection].find()])
         # col_list = [i["_id"] for i in self.client[self.worker_db][registration_collection].find()]
+        from collections import namedtuple
+        worker_register_result = namedtuple(
+            "worker_register_result" , 
+            ["exit_code","error"])
         c = self.client[self.worker_db][registration_collection].find_one({"_id" : worker_collection_name})
         if c is not None:
             from errorType import duplicate_worker_name_error
@@ -54,10 +78,10 @@ class base_worker(metaclass=ABCMeta):
                                                              })
         except pymongo.errors.DuplicateKeyError as e:
             # logger.info('worker registered, try next, future will implement to test if that worker is dead and resume its role')
-            return (exit_code.fail, e)
+            return worker_register_result(exit_code = exit_code.fail, error = e)
         
         # self.dataStream = 
-        return exit_code.success, None
+        return worker_register_result(exit_code = exit_code.success, error = None)
     def process_common_command(self, command : worker_command.worker_command):
         if 'kill' in command.command_json:
             logging_info = 'killing worker ' + str(self.worker_collection_name) +' by worker_command.worker_command'
@@ -191,7 +215,15 @@ class base_worker(metaclass=ABCMeta):
         pass
     def process_existing_work_doc(self):
         for doc in self.client[worker_db][self.worker_collection_name].find({'tag' : None}):
-            self.process_doc_callback(doc) 
+            event_wrapper = {}
+            event_wrapper['fullDocument'] = doc
+            from copy import deepcopy
+            
+            self.process_event_threadable(deepcopy(event_wrapper))
+            # self.process_doc_callback(doc) 
+            # event_wrapper = {}
+            # event_wrapper['doc'] = doc
+            
         pass
   
             

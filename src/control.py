@@ -19,12 +19,8 @@ import connections
 import time , threading, datetime
 import pickle, pymongo
 
+from exit_code_class import exit_code_class
 
-class exit_code_class:
-    kill_worker = 0
-    fail = 1
-    break_current_and_continue = 2
-    success = 3
 exit_code = exit_code_class()
 from _base_worker import base_worker
 # @for_all_methods(debug_decorater)
@@ -33,29 +29,55 @@ class controller(base_worker):
     name : str
     check_worker_on = True
     #     pass
-
-    def atomic_assign_data(self, doc, mongoClient, db_from , col_from ,db_to,  col_to):
+    def find_and_retry_unfinished_task(self):
+        pass
+    def atomic_assign_data(self, 
+                           doc, 
+                           mongoClient, 
+                           db_from , col_from ,
+                           db_to,  col_to):
+        """
+        atomic transaction on mongodb to allocate task to worker
+        """
         from pymongo.read_concern import ReadConcern
         from pymongo.write_concern import WriteConcern
         from pymongo.read_preferences import ReadPreference
         wc_majority = WriteConcern("majority", wtimeout=2000)
         
         from copy import deepcopy
-        import numpy as np, pickle
+        import numpy as np, pickle, datetime
+        
+        doc ['assignment_time'] = datetime.datetime.now()
         to_send = deepcopy(doc)
+        
         to_send.pop('_id')
         collection_from = mongoClient[db_from][col_from]
         collection_to= mongoClient[db_to][col_to]
         session=  mongoClient.start_session()
-        logging_info = 'packet id' + str(doc['_id']) + ' assigned to worker ' + str(worker_name)
+        logging_info = ('packet id' + str(doc['_id']) 
+                            + ' assigned to worker ' 
+                            + str(worker_name))
         logging.info(logging_info + ' start')
         session.start_transaction(read_concern=ReadConcern('local'),
                                   write_concern=wc_majority)
-        logging_info = 'packet id' + str(doc['_id']) + ' assigned to worker ' + str(worker_name)
+        logging_info = ('packet id' 
+                        + str(doc['_id']) 
+                        + ' assigned to worker ' 
+                        + str(worker_name))
         # Important:: You must pass the session to the operations.
-        collection_from.find_one_and_delete({'_id' : doc['_id']}, session=session)
-        collection_to.replace_one({'_id' : doc['_id']}, doc , upsert = True, session = session)
-        mongoClient['log'] ['controller_log'].insert_one({'info' : logging_info, "utctime": datetime.datetime.utcnow()}, session = session)
+        collection_from.find_one_and_delete(
+            {'_id' : doc['_id']}, 
+            session=session)
+        collection_to.replace_one(
+            {'_id' : doc['_id']}, 
+            doc , 
+            upsert = True, 
+            session = session)
+        mongoClient['log'] ['controller_log'].insert_one(
+                {'info' : logging_info, 
+                 "utctime": datetime.datetime.utcnow()
+                 }, 
+            session = session)
         session.commit_transaction()
         session.end_session()
         logging.info(logging_info + ' end')
@@ -68,9 +90,12 @@ class controller(base_worker):
         self.eventStream = self.client[worker_db][worker_collection_name].watch()
         
         try:
-            resume_token = connections.client['eventTrigger']['resume_token'].find_one()['value']
+            resume_token = (connections.client['eventTrigger']
+                            ['resume_token'].find_one()['value'])
             # resume_token = bytes(resume_token, 'utf-8')
-            self.dataStream = connections.client['eventTrigger']['data_packet_input'].watch(resume_after = resume_token)
+            self.dataStream = (connections.client['eventTrigger']
+                               ['data_packet_input'].
+                               watch(resume_after = resume_token))
             self.logger.info('resume_after' + str(resume_token))
         except:
             self.dataStream = connections.client['eventTrigger']['data_packet_input'].watch()
@@ -114,6 +139,7 @@ class controller(base_worker):
         col_from = 'data_packet_input'
         db_to = worker_db
         col_to = worker_name
+        update_dict = {}
         self.atomic_assign_data(fullDocument,mongoClient, db_from, col_from, db_to, col_to)
         
         # logger.info(logging_info)
@@ -162,7 +188,12 @@ class controller(base_worker):
         
         self.record_post_threadable_event() 
         
+    def retry_failed_job(time_lag_to_retry = 300, # seconds
+                         
+                         ):
         
+        
+        pass
         
         # =============== to_refactor ==============================
     def process_event2(self, i):  # controller route data
@@ -179,7 +210,10 @@ class controller(base_worker):
             return 
         
         if use_thread:
-            x = threading.Thread(target=self.process_event_threadable, args=(j,))
+            x = threading.Thread(
+                target=self.process_event_threadable, 
+                args=(j,)
+                )
             x.start()
         else:
             self.process_event_threadable(j)
@@ -200,10 +234,11 @@ class controller(base_worker):
         self.logging_doc_results2()
         self.logger.info('b4 resume token')
         resume_token = j['_id']
-        connections.client['eventTrigger']['resume_token'].replace_one({'_id': 'resume_token'}, 
-                                                                       {'_id': 'resume_token', 'value': resume_token},
-                                                                       upsert = True
-                                                                       )
+        connections.client['eventTrigger']['resume_token'].replace_one(
+            {'_id': 'resume_token'}, 
+            {'_id': 'resume_token', 'value': resume_token},
+            upsert = True
+            )
         self.logger.info('after resume token')
         pass
     
@@ -390,9 +425,9 @@ if __name__ == '__main__':
                     raise(success_or_err)
                 pass
             else:
-                my_worker.interval_check_worker_availability
-                # t = Thread(target = my_worker.interval_check_worker_availability)
-                # t.start()
+                # my_worker.interval_check_worker_availability()
+                t = Thread(target = my_worker.interval_check_worker_availability)
+                t.start()
                 logger.info('worker registered as '+ worker_name)
                 my_worker.worker_listen()
                 worker_exit_code = my_worker.work()
