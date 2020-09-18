@@ -11,7 +11,7 @@
             "program": "${file}",
             "cwd"    : "${fileDirname}",
             "console": "integratedTerminal",
-            "pythonPath": "C:\\Users\\ASUS\\anaconda3\\envs\\pypy\\pypy3.exe"
+            "pythonPath": "C:/Users/ASUS/Documents/python/pymontroller/.venv/Scripts/python.exe"
         }
     ]
 }

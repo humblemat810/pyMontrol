@@ -23,7 +23,7 @@ def process_data(data):
     '''
     pass
 
-# run this script for demo behaviour
+# run this script for demo behaviour AFTER uncommented the process_data interior code
 if __name__ == '__main__':
     from data_map_processor import process_dag
     import numpy as np

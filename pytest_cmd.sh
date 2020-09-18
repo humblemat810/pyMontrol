@@ -1,0 +1,1 @@
+pytest -c pytest.ini --ignore=custom_test
